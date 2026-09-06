@@ -37,7 +37,7 @@ target_link_libraries(car-gui
 )
 
 if(EMSCRIPTEN)
-    target_compile_definitions(car-gui PRIVATE NANOVG_GLES2)
+    target_compile_options(car-gui PRIVATE "SHELL:-s USE_SDL=2")
     target_link_options(car-gui PRIVATE
         "SHELL:-s USE_SDL=2"
         "SHELL:-s MIN_WEBGL_VERSION=1"

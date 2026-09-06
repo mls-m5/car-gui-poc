@@ -1,11 +1,13 @@
 #include "dashboard.h"
 #include <GLES2/gl2.h>
 #include <SDL2/SDL.h>
+#include <algorithm>
 #include <chrono>
 #include <iostream>
 #include <string>
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
+#include <emscripten/html5.h>
 #endif
 
 struct Display {
@@ -102,8 +104,33 @@ struct WebApplication {
     Display display;
     WebView view = WebView::driver;
     SimulatedVehicleDataSource source;
-    double start = 0;
 };
+static WebApplication web_application;
+static void resize_web_canvas() {
+    double css_width = 0;
+    double css_height = 0;
+    if (emscripten_get_element_css_size("#canvas", &css_width, &css_height) !=
+        EMSCRIPTEN_RESULT_SUCCESS)
+        return;
+    const double pixel_ratio =
+        std::min(2.0, emscripten_get_device_pixel_ratio());
+    const int target_width = std::max(1, (int)(css_width * pixel_ratio));
+    const int target_height = std::max(1, (int)(css_height * pixel_ratio));
+    int current_width = 0;
+    int current_height = 0;
+    emscripten_get_canvas_element_size(
+        "#canvas", &current_width, &current_height);
+    if (target_width != current_width || target_height != current_height)
+        emscripten_set_canvas_element_size(
+            "#canvas", target_width, target_height);
+}
+static float web_button_width(float width) {
+    return width < 700 ? 76 : 96;
+}
+static float web_button_start(float width) {
+    const float button_width = web_button_width(width);
+    return width - 20 - button_width * 3 - 16;
+}
 static void web_navigation(NVGcontext *vg, float width, WebView view) {
     nvgBeginPath(vg);
     nvgRect(vg, 0, 0, width, 56);
@@ -113,28 +140,36 @@ static void web_navigation(NVGcontext *vg, float width, WebView view) {
     nvgFontFace(vg, "regular");
     nvgFillColor(vg, nvgRGB(235, 242, 250));
     nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
-    nvgText(vg, "EV DASHBOARD", 20, 28, nullptr);
-    const char *labels[] = {"DRIVER", "DETAILS", "SPLIT"};
+    nvgText(vg, 20, 28, width < 700 ? "EV" : "EV DASHBOARD", nullptr);
+    const char *wide_labels[] = {"DRIVER", "DETAILS", "SPLIT"};
+    const char *narrow_labels[] = {"DRV", "INFO", "BOTH"};
+    const float button_width = web_button_width(width);
+    const float start = web_button_start(width);
     for (int i = 0; i < 3; i++) {
-        float x = width - 20 - 3 * 96 - 2 * 8 + i * 104;
+        float x = start + i * (button_width + 8);
         bool selected = (i == 0 && view == WebView::driver) ||
                         (i == 1 && view == WebView::details) ||
                         (i == 2 && view == WebView::split);
         nvgBeginPath(vg);
-        nvgRoundedRect(vg, x, 11, 96, 34, 8);
+        nvgRoundedRect(vg, x, 11, button_width, 34, 8);
         nvgFillColor(vg, selected ? nvgRGB(35, 130, 175) : nvgRGB(25, 38, 55));
         nvgFill(vg);
         nvgFontSize(vg, 12);
         nvgFillColor(vg,
                      selected ? nvgRGB(235, 250, 255) : nvgRGB(135, 157, 180));
         nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
-        nvgText(vg, x + 48, 28, labels[i], nullptr);
+        nvgText(vg,
+                x + button_width / 2,
+                28,
+                width < 700 ? narrow_labels[i] : wide_labels[i],
+                nullptr);
     }
 }
 static void web_frame(void *arg) {
     auto &app = *static_cast<WebApplication *>(arg);
     if (!app.display.open)
         return;
+    resize_web_canvas();
     SDL_Event event;
     int width = 0, height = 0;
     SDL_GetWindowSize(app.display.window, &width, &height);
@@ -154,13 +189,16 @@ static void web_frame(void *arg) {
                                                           : WebView::driver;
         }
         if (event.type == SDL_MOUSEBUTTONDOWN && event.button.y < 56) {
-            float x = event.button.x;
-            if (x > width - 20 - 3 * 96 - 2 * 8 && x < width - 20 - 2 * 96 - 8)
-                app.view = WebView::driver;
-            else if (x < width - 20 - 96)
-                app.view = WebView::details;
-            else
-                app.view = WebView::split;
+            const float x = event.button.x;
+            const float button_width = web_button_width((float)width);
+            const float start = web_button_start((float)width);
+            for (int i = 0; i < 3; ++i) {
+                const float left = start + i * (button_width + 8);
+                if (x >= left && x <= left + button_width)
+                    app.view = i == 0   ? WebView::driver
+                               : i == 1 ? WebView::details
+                                        : WebView::split;
+            }
         }
     }
     int pw = 0, ph = 0;
@@ -223,8 +261,8 @@ int main() {
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 #ifdef __EMSCRIPTEN__
-    WebApplication app;
-    app.start = 0;
+    WebApplication &app = web_application;
+    resize_web_canvas();
     if (!create_display(app.display,
                         "EV Dashboard",
                         SDL_WINDOWPOS_CENTERED,
@@ -236,6 +274,11 @@ int main() {
         SDL_Quit();
         return 1;
     }
+    resize_web_canvas();
+    int web_width = 0;
+    int web_height = 0;
+    SDL_GetWindowSize(app.display.window, &web_width, &web_height);
+    app.view = web_width >= 1200 ? WebView::split : WebView::driver;
     emscripten_set_main_loop_arg(web_frame, &app, 0, true);
 #else
     const char *base_path = SDL_GetBasePath();

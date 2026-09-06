@@ -1,0 +1,30 @@
+FROM docker.io/emscripten/emsdk:4.0.15 AS builder
+
+ARG BUILD_TYPE=Release
+RUN python3 -m pip install --no-cache-dir cmake==3.31.6 \
+    && embuilder build sdl2
+
+WORKDIR /source
+COPY . .
+
+RUN emcmake cmake -S . -B /build-web \
+        -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+        -DBUILD_TESTING=OFF \
+    && cmake --build /build-web --parallel \
+    && mkdir /web-output \
+    && cp /build-web/car-gui.html \
+          /build-web/car-gui.js \
+          /build-web/car-gui.wasm \
+          /build-web/car-gui.data \
+          /web-output/
+
+FROM docker.io/library/nginx:1.27-alpine
+
+LABEL org.opencontainers.image.title="car-gui WebAssembly demo" \
+      org.opencontainers.image.description="SDL2 and NanoVG electric vehicle dashboard"
+
+RUN rm -rf /usr/share/nginx/html/*
+COPY --from=builder /web-output/ /usr/share/nginx/html/
+RUN cp /usr/share/nginx/html/car-gui.html /usr/share/nginx/html/index.html
+
+EXPOSE 80

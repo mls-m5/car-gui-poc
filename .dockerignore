@@ -1,0 +1,7 @@
+.git
+build/
+build-*/
+bin/
+.qtc_clangd/
+*.creator.user
+*.creator.user.*

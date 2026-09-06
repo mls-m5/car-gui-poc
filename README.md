@@ -72,3 +72,40 @@ The custom `web/shell.html` provides the full-screen page. Do not open the
 HTML with `file://`; packaged WebAssembly and assets must be served over HTTP.
 Emscripten supplies SDL2 and WebGL, while the project continues using NanoVG's
 GLES2 backend.
+
+### Containerized browser build
+
+The container build does not require a host Emscripten installation. It uses a
+pinned official Emscripten SDK builder image and packages the result in a small
+nginx image. Podman is preferred automatically; Docker is used as a fallback.
+
+Build the image and copy the generated HTML, JavaScript, WebAssembly, and data
+files to `build-web-container/` and a second copy under
+`build-web-container/public/`:
+
+```sh
+./scripts/build-web-container.sh
+```
+
+The build directory also receives an executable local server script. It serves
+`build-web-container/public/` with Python and accepts an optional port:
+
+```sh
+./build-web-container/serve.sh
+./build-web-container/serve.sh 9000
+```
+
+Build and serve the nginx image at <http://localhost:8080>:
+
+```sh
+./scripts/build-web-container.sh --serve
+```
+
+The image is named `car-gui-web` by default. Use `CAR_GUI_WEB_IMAGE`,
+`CAR_GUI_WEB_OUTPUT`, `CAR_GUI_WEB_PUBLIC`, `CAR_GUI_WEB_PORT`, or
+`CONTAINER_ENGINE` to override the defaults. For example:
+
+```sh
+CAR_GUI_WEB_PORT=9000 CONTAINER_ENGINE=docker \
+    ./scripts/build-web-container.sh --serve
+```
