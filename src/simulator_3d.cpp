@@ -336,7 +336,7 @@ void Simulator3DRenderer::render(int viewport_x,
                     car_z - yaw_sine * local_x + yaw_cosine * local_z};
     };
     oriented_box(vertices,
-                 {car_x, .48f, 2},
+                 car_point(0, .48f, 0),
                  {1.9f, .65f, 4.2f},
                  car_yaw,
                  {.04f, .45f, .75f});
