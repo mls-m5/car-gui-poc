@@ -1,7 +1,10 @@
 #include "interactive_vehicle_simulator.h"
 
+#include <btBulletDynamicsCommon.h>
+
 #include <algorithm>
 #include <cmath>
+#include <memory>
 
 namespace {
 constexpr double vehicle_mass_kg = 1950;
@@ -12,30 +15,82 @@ constexpr double air_density = 1.225;
 constexpr double drag_area = 0.62;
 constexpr double rolling_coefficient = 0.011;
 constexpr double gravity = 9.81;
+constexpr double drivetrain_efficiency = 0.91;
+constexpr double regeneration_efficiency = 0.68;
 } // namespace
+
+struct InteractiveVehicleSimulator::PhysicsState {
+    btDefaultCollisionConfiguration collision_configuration;
+    btCollisionDispatcher dispatcher{&collision_configuration};
+    btDbvtBroadphase broadphase;
+    btSequentialImpulseConstraintSolver solver;
+    btDiscreteDynamicsWorld world{
+        &dispatcher, &broadphase, &solver, &collision_configuration};
+    btStaticPlaneShape ground_shape{btVector3(0, 1, 0), 0};
+    btBoxShape car_shape{btVector3(0.95, 0.35, 2.2)};
+    std::unique_ptr<btDefaultMotionState> ground_motion;
+    std::unique_ptr<btDefaultMotionState> car_motion;
+    std::unique_ptr<btRigidBody> ground_body;
+    std::unique_ptr<btRigidBody> car_body;
+    double heading = 0;
+
+    PhysicsState() {
+        world.setGravity(btVector3(0, -gravity, 0));
+        btTransform ground_transform;
+        ground_transform.setIdentity();
+        ground_motion =
+            std::make_unique<btDefaultMotionState>(ground_transform);
+        btRigidBody::btRigidBodyConstructionInfo ground_info(
+            0, ground_motion.get(), &ground_shape);
+        ground_info.m_friction = 0;
+        ground_body = std::make_unique<btRigidBody>(ground_info);
+        world.addRigidBody(ground_body.get());
+
+        btTransform car_transform;
+        car_transform.setIdentity();
+        car_transform.setOrigin(btVector3(0, 0.36, 0));
+        car_motion = std::make_unique<btDefaultMotionState>(car_transform);
+        btVector3 inertia;
+        car_shape.calculateLocalInertia(vehicle_mass_kg, inertia);
+        btRigidBody::btRigidBodyConstructionInfo car_info(
+            vehicle_mass_kg, car_motion.get(), &car_shape, inertia);
+        car_info.m_friction = 0;
+        car_info.m_linearDamping = 0;
+        car_info.m_angularDamping = 1;
+        car_body = std::make_unique<btRigidBody>(car_info);
+        car_body->setAngularFactor(btVector3(0, 0, 0));
+        car_body->setActivationState(DISABLE_DEACTIVATION);
+        world.addRigidBody(car_body.get());
+    }
+
+    ~PhysicsState() {
+        world.removeRigidBody(car_body.get());
+        world.removeRigidBody(ground_body.get());
+    }
+};
+
+InteractiveVehicleSimulator::InteractiveVehicleSimulator()
+    : physics_(std::make_unique<PhysicsState>()) {}
+InteractiveVehicleSimulator::~InteractiveVehicleSimulator() = default;
 
 void InteractiveVehicleSimulator::set_controls(
     const SimulatorControls &controls) {
     controls_ = controls;
 }
-
 void InteractiveVehicleSimulator::set_gear(Gear gear) {
     if (std::abs(speed_mps_) < 0.6 || gear == Gear::neutral)
         gear_ = gear;
 }
-
 void InteractiveVehicleSimulator::toggle_headlights() {
     visual_.headlights = !visual_.headlights;
     if (!visual_.headlights)
         visual_.high_beam = false;
 }
-
 void InteractiveVehicleSimulator::toggle_high_beam() {
     visual_.high_beam = !visual_.high_beam;
     if (visual_.high_beam)
         visual_.headlights = true;
 }
-
 void InteractiveVehicleSimulator::toggle_battery_fault() {
     visual_.battery_fault = !visual_.battery_fault;
 }
@@ -54,75 +109,109 @@ const SimulatorVisualState &InteractiveVehicleSimulator::visual_state() const {
 
 void InteractiveVehicleSimulator::advance(double dt) {
     dt = std::clamp(dt, 0.0, 0.05);
+    if (dt <= 0)
+        return;
+
+    btRigidBody &body = *physics_->car_body;
+    const btVector3 old_velocity = body.getLinearVelocity();
+    const double old_speed = std::hypot(old_velocity.x(), old_velocity.z());
     const double throttle = controls_.throttle ? 1.0 : 0.0;
     const double brake = controls_.brake ? 1.0 : 0.0;
-    const double direction = gear_ == Gear::reverse ? -1.0 : 1.0;
     const bool can_drive = gear_ == Gear::drive || gear_ == Gear::reverse;
-    const double speed_abs = std::abs(speed_mps_);
+    const double direction = gear_ == Gear::reverse ? -1.0 : 1.0;
     const double power_limit = visual_.drivetrain_fault || visual_.battery_fault
                                    ? maximum_drive_power_w * 0.25
                                    : maximum_drive_power_w;
-    double traction_force = 0;
-    if (can_drive && throttle > 0)
-        traction_force =
-            direction *
-            std::min(8500.0, power_limit / std::max(3.0, speed_abs));
-
-    const double resistance =
-        speed_abs > 0.02
-            ? std::copysign(0.5 * air_density * drag_area * speed_abs *
-                                    speed_abs +
-                                rolling_coefficient * vehicle_mass_kg * gravity,
-                            speed_mps_)
+    const double traction_magnitude =
+        can_drive && throttle > 0
+            ? std::min(8500.0, power_limit / std::max(3.0, old_speed))
             : 0;
-    const double brake_force =
-        (brake * 10000 + (controls_.emergency_brake ? 18000 : 0));
-    const double signed_brake =
-        speed_abs > 0.02 ? std::copysign(brake_force, speed_mps_) : 0;
-    const double acceleration =
-        (traction_force - resistance - signed_brake) / vehicle_mass_kg;
-    const double old_speed = speed_mps_;
-    speed_mps_ += acceleration * dt;
-    if ((old_speed > 0 && speed_mps_ < 0) || (old_speed < 0 && speed_mps_ > 0))
-        speed_mps_ = 0;
-    if (gear_ == Gear::park)
-        speed_mps_ = 0;
-    if (gear_ == Gear::reverse)
-        speed_mps_ = std::clamp(speed_mps_, -maximum_reverse_speed_mps, 0.0);
-    if (gear_ == Gear::drive)
-        speed_mps_ = std::clamp(speed_mps_, 0.0, 55.0);
-
-    const double travelled_m = std::abs(speed_mps_) * dt;
-    visual_.distance_m += travelled_m;
-    trip_distance_km_ += travelled_m / 1000;
-    const double drive_power_w = traction_force * speed_mps_;
-    const double regen_power_w =
-        brake > 0 && speed_abs > 1
-            ? std::min(50000.0, brake_force * speed_abs * 0.55)
-            : 0;
-    if (drive_power_w > 0) {
-        const double used = drive_power_w * dt / 3600000000.0;
-        energy_used_kwh_ += used;
-        battery_energy_kwh_ -= used;
-    }
-    if (regen_power_w > 0) {
-        const double recovered = regen_power_w * dt / 3600000000.0;
-        energy_regenerated_kwh_ += recovered;
-        battery_energy_kwh_ =
-            std::min(battery_capacity_kwh, battery_energy_kwh_ + recovered);
-    }
 
     const double steer_target = (controls_.steer_right ? 1.0 : 0.0) -
                                 (controls_.steer_left ? 1.0 : 0.0);
     visual_.steering +=
         (steer_target - visual_.steering) * std::min(1.0, dt * 5.0);
-    visual_.lateral_position_m += visual_.steering * speed_abs * dt * 0.16;
-    visual_.lateral_position_m *= std::max(0.0, 1.0 - dt * 0.08);
-    visual_.lateral_position_m =
-        std::clamp(visual_.lateral_position_m, -5.5, 5.5);
-    visual_.speed_kph = speed_abs * 3.6;
+    physics_->heading += visual_.steering * old_speed * dt * 0.018;
+    const btVector3 forward(
+        std::sin(physics_->heading), 0, std::cos(physics_->heading));
+    const btVector3 right(forward.z(), 0, -forward.x());
+    const btVector3 horizontal_velocity(old_velocity.x(), 0, old_velocity.z());
+    const double forward_speed = horizontal_velocity.dot(forward);
+    const double speed_abs = horizontal_velocity.length();
 
-    const double load = std::abs(drive_power_w) / maximum_drive_power_w;
+    body.clearForces();
+    body.applyCentralForce(forward * (traction_magnitude * direction));
+    if (speed_abs > 0.02) {
+        const double resistance =
+            0.5 * air_density * drag_area * speed_abs * speed_abs +
+            rolling_coefficient * vehicle_mass_kg * gravity;
+        body.applyCentralForce(-horizontal_velocity.normalized() * resistance);
+    }
+    const double brake_magnitude =
+        brake * 10000 + (controls_.emergency_brake ? 18000 : 0);
+    if (speed_abs > 0.02)
+        body.applyCentralForce(-horizontal_velocity.normalized() *
+                               brake_magnitude);
+    const double lateral_speed = horizontal_velocity.dot(right);
+    body.applyCentralForce(right * (-lateral_speed * vehicle_mass_kg * 4.5));
+
+    physics_->world.stepSimulation(dt, 2, 1.0 / 120.0);
+    btVector3 velocity = body.getLinearVelocity();
+    speed_mps_ = std::hypot(velocity.x(), velocity.z());
+    if (gear_ == Gear::park) {
+        velocity.setX(0);
+        velocity.setZ(0);
+        body.setLinearVelocity(velocity);
+        speed_mps_ = 0;
+    }
+    if (gear_ == Gear::reverse && speed_mps_ > maximum_reverse_speed_mps) {
+        velocity *= maximum_reverse_speed_mps / speed_mps_;
+        body.setLinearVelocity(velocity);
+        speed_mps_ = maximum_reverse_speed_mps;
+    }
+    if (gear_ == Gear::drive && forward_speed < -0.2) {
+        velocity.setX(0);
+        velocity.setZ(0);
+        body.setLinearVelocity(velocity);
+        speed_mps_ = 0;
+    }
+
+    btTransform transform = body.getWorldTransform();
+    transform.setRotation(btQuaternion(btVector3(0, 1, 0), physics_->heading));
+    body.setWorldTransform(transform);
+    body.getMotionState()->setWorldTransform(transform);
+
+    const double average_speed = (old_speed + speed_mps_) * 0.5;
+    const double travelled_m = average_speed * dt;
+    visual_.distance_m += travelled_m;
+    trip_distance_km_ += travelled_m / 1000;
+    const double mechanical_drive_w = traction_magnitude * average_speed;
+    const double regenerative_w =
+        brake_magnitude > 0 && average_speed > 1
+            ? std::min(50000.0, brake_magnitude * average_speed)
+            : 0;
+    if (mechanical_drive_w > 0) {
+        const double electrical_kwh =
+            mechanical_drive_w / drivetrain_efficiency * dt / 3600000.0;
+        energy_used_kwh_ += electrical_kwh;
+        battery_energy_kwh_ -= electrical_kwh;
+    }
+    if (regenerative_w > 0) {
+        const double recovered_kwh =
+            regenerative_w * regeneration_efficiency * dt / 3600000.0;
+        energy_regenerated_kwh_ += recovered_kwh;
+        battery_energy_kwh_ =
+            std::min(battery_capacity_kwh, battery_energy_kwh_ + recovered_kwh);
+    }
+    last_power_kw_ = mechanical_drive_w > 0
+                         ? mechanical_drive_w / drivetrain_efficiency / 1000
+                         : -regenerative_w * regeneration_efficiency / 1000;
+    battery_energy_kwh_ =
+        std::clamp(battery_energy_kwh_, 0.0, battery_capacity_kwh);
+
+    visual_.lateral_position_m = transform.getOrigin().x();
+    visual_.speed_kph = speed_mps_ * 3.6;
+    const double load = mechanical_drive_w / maximum_drive_power_w;
     battery_temperature_c_ +=
         ((23 + load * 18) - battery_temperature_c_) * dt * 0.025;
     motor_temperature_c_ +=
@@ -144,15 +233,7 @@ VehicleData InteractiveVehicleSimulator::sample(double elapsed_seconds) {
     data.drive_mode = DriveMode::normal;
     data.battery_soc_percent = 100 * battery_energy_kwh_ / battery_capacity_kwh;
     data.estimated_range_km = data.battery_soc_percent * 4.7;
-    const double throttle_power =
-        controls_.throttle ? std::min(150.0, 12.0 + data.speed_kph * 1.15) : 0;
-    const double regen_power =
-        (controls_.brake || controls_.emergency_brake) && data.speed_kph > 4
-            ? -std::min(50.0, data.speed_kph * 0.75)
-            : 0;
-    data.power_kw = regen_power != 0 ? regen_power : throttle_power;
-    if (visual_.drivetrain_fault || visual_.battery_fault)
-        data.power_kw *= 0.25;
+    data.power_kw = last_power_kw_;
     data.consumption_kwh_per_100km = data.speed_kph > 2 && data.power_kw > 0
                                          ? data.power_kw / data.speed_kph * 100
                                          : 0;

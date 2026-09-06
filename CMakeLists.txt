@@ -3,6 +3,10 @@ project(car-gui LANGUAGES C CXX)
 
 enable_testing()
 add_subdirectory(lib)
+add_subdirectory(external/bullet3 EXCLUDE_FROM_ALL)
+target_include_directories(BulletSrc PUBLIC
+    "${CMAKE_SOURCE_DIR}/external/bullet3/src"
+)
 
 if(EMSCRIPTEN)
     # Emscripten supplies SDL2 and GLES2 through its ports.
@@ -20,6 +24,7 @@ add_executable(car-gui
     src/simulated_vehicle_data.cpp
     src/interactive_vehicle_simulator.cpp
     src/simulator_view.cpp
+    src/simulator_3d.cpp
 )
 
 target_compile_features(car-gui PRIVATE cxx_std_17)
@@ -35,6 +40,7 @@ endif()
 target_link_libraries(car-gui
     PRIVATE
         NanoVG::NanoVG
+        BulletSrc::BulletSrc
         ${CAR_GUI_PLATFORM_LIBRARIES}
 )
 

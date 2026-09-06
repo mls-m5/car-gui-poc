@@ -32,10 +32,20 @@ int main() {
     assert(driven.speed_kph > 10);
     assert(driven.trip_distance_km > 0);
     assert(driven.trip_energy_used_kwh > 0);
+    assert(driven.battery_soc_percent < 64);
+
+    controls.throttle = false;
+    controls.brake = true;
+    simulator.set_controls(controls);
+    VehicleData braked;
+    for (int i = 401; i <= 600; ++i)
+        braked = simulator.sample(i * 0.025);
+    assert(braked.speed_kph < driven.speed_kph);
+    assert(braked.trip_energy_regenerated_kwh > 0);
 
     simulator.toggle_tire_fault();
     simulator.toggle_battery_fault();
-    VehicleData faulted = simulator.sample(10.1);
+    VehicleData faulted = simulator.sample(15.1);
     assert(faulted.warnings.tire_pressure);
     assert(faulted.warnings.battery_warning);
     assert(faulted.tire_pressure_rear_right_bar < 2.2);

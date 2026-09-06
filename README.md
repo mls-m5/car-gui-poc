@@ -19,7 +19,9 @@ Native builds require:
 - System-installed OpenGL ES 2 development files
 
 NanoVG is downloaded automatically by CMake and pinned to a specific upstream
-commit. SDL2 is not downloaded by this project.
+commit. Bullet is pinned as the `external/bullet3` Git submodule. Clone with
+`--recurse-submodules`, or initialize an existing checkout with
+`git submodule update --init`. SDL2 is not downloaded by this project.
 
 ## Build and run
 
@@ -30,11 +32,13 @@ cmake --build build
 ```
 
 Press Escape to close all windows. Closing an individual window leaves the
-others running. The default native mode uses the automatic dummy backend. Run
-the interactive backend to open a third driving-simulator window:
+others running. The default native mode uses the automatic dummy backend. The
+interactive backend opens a third window and defaults to its procedural GLES2
+3D road; the original NanoVG road remains available:
 
 ```sh
 ./build/car-gui --backend=simulator
+./build/car-gui --backend=simulator --view=2d
 ```
 
 Simulator controls:
@@ -47,8 +51,10 @@ Simulator controls:
 - `X` toggles the seat belt.
 
 All dashboard values arrive through the decoded `VehicleDataSource` boundary.
-The automatic and interactive simulators implement it without exposing their
-model to the dashboard renderers. A future `NetworkVehicleDataSource` can own
+The automatic and Bullet-powered interactive simulators implement it without
+exposing their model to the dashboard renderers. Acceleration, drag, braking,
+regeneration, and battery energy use are derived from the rigid body's motion
+and applied forces. A future `NetworkVehicleDataSource` can own
 an Ethernet connection and unpack its telemetry protocol into `VehicleData`
 without changing any GUI code; no real network connection is used today. The
 `assets/fonts` directory contains project-owned DejaVu Sans font files and
@@ -63,10 +69,10 @@ ctest --test-dir build --output-on-failure
 ## Browser build (Emscripten)
 
 Native builds use two SDL windows. Browsers use one canvas, so the web build
-provides `SIMULATOR`, `DRIVER`, `DETAILS`, and `SPLIT` views in an in-canvas
-navigation bar. The interactive simulator and road view are selected by
-default. Use the buttons, keys `1` through `4`, or `Tab` to switch views. The
-same driving and fault controls listed above work while the canvas has focus.
+provides `3D DRIVE`, `2D DRIVE`, `DRIVER`, `DETAILS`, and `SPLIT` views in an
+in-canvas navigation bar. The Bullet-powered 3D road is selected by default.
+Use the buttons, keys `1` through `5`, or `Tab` to switch views. The same
+driving and fault controls listed above work while the canvas has focus.
 
 Install and activate the official Emscripten SDK separately:
 
