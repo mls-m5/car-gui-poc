@@ -75,6 +75,150 @@ void chip(NVGcontext *v,
            : nvgRGBA(100, 120, 145, 20));
     txt(v, s, x + 44, y + 17, 11, on ? c : muted, NVG_ALIGN_CENTER);
 }
+void turn_signal(NVGcontext *v,
+                 float center_x,
+                 float center_y,
+                 bool points_left,
+                 bool active) {
+    const float direction = points_left ? -1.f : 1.f;
+    nvgBeginPath(v);
+    nvgMoveTo(v, center_x + direction * 14, center_y - 4);
+    nvgLineTo(v, center_x, center_y - 4);
+    nvgLineTo(v, center_x, center_y - 11);
+    nvgLineTo(v, center_x - direction * 15, center_y);
+    nvgLineTo(v, center_x, center_y + 11);
+    nvgLineTo(v, center_x, center_y + 4);
+    nvgLineTo(v, center_x + direction * 14, center_y + 4);
+    nvgClosePath(v);
+    nvgFillColor(v, active ? green : nvgRGBA(135, 157, 180, 35));
+    nvgFill(v);
+}
+void headlight_symbol(NVGcontext *v, bool headlights, bool high_beam) {
+    const NVGcolor color = high_beam    ? cyan
+                           : headlights ? white
+                                        : nvgRGBA(135, 157, 180, 35);
+    nvgSave(v);
+    nvgStrokeColor(v, color);
+    nvgStrokeWidth(v, 2.2f);
+    nvgLineCap(v, NVG_ROUND);
+    nvgBeginPath(v);
+    nvgMoveTo(v, 109, 39);
+    nvgBezierTo(v, 119, 41, 124, 45, 124, 50);
+    nvgBezierTo(v, 124, 55, 119, 59, 109, 61);
+    nvgClosePath(v);
+    nvgStroke(v);
+    for (int i = -1; i <= 1; ++i) {
+        const float y = 50 + i * 7;
+        nvgBeginPath(v);
+        nvgMoveTo(v, 130, y);
+        nvgLineTo(v, 151, high_beam ? y : y + 3);
+        nvgStroke(v);
+    }
+    nvgRestore(v);
+}
+enum class WarningIcon { seat_belt, parking_brake, tire, battery, general };
+void warning_symbol(NVGcontext *v,
+                    WarningIcon icon,
+                    float center_x,
+                    float center_y,
+                    bool active,
+                    NVGcolor active_color = amber) {
+    const NVGcolor color = active ? active_color : nvgRGBA(135, 157, 180, 40);
+    box(v,
+        center_x - 44,
+        center_y - 17,
+        88,
+        34,
+        active ? nvgRGBA(active_color.r * 255,
+                         active_color.g * 255,
+                         active_color.b * 255,
+                         45)
+               : nvgRGBA(100, 120, 145, 14));
+    nvgSave(v);
+    nvgStrokeColor(v, color);
+    nvgFillColor(v, color);
+    nvgStrokeWidth(v, 2.2f);
+    nvgLineCap(v, NVG_ROUND);
+    nvgLineJoin(v, NVG_ROUND);
+    if (icon == WarningIcon::seat_belt) {
+        nvgBeginPath(v);
+        nvgCircle(v, center_x - 6, center_y - 8, 3);
+        nvgFill(v);
+        nvgBeginPath(v);
+        nvgMoveTo(v, center_x - 7, center_y - 3);
+        nvgLineTo(v, center_x - 9, center_y + 9);
+        nvgLineTo(v, center_x + 5, center_y + 9);
+        nvgMoveTo(v, center_x - 5, center_y - 1);
+        nvgLineTo(v, center_x + 9, center_y + 10);
+        nvgMoveTo(v, center_x + 7, center_y - 8);
+        nvgLineTo(v, center_x - 2, center_y + 10);
+        nvgStroke(v);
+    }
+    else if (icon == WarningIcon::parking_brake) {
+        nvgBeginPath(v);
+        nvgCircle(v, center_x, center_y, 10);
+        nvgStroke(v);
+        txt(v, "P", center_x, center_y, 13, color, NVG_ALIGN_CENTER);
+        nvgBeginPath(v);
+        nvgMoveTo(v, center_x - 14, center_y - 8);
+        nvgBezierTo(v,
+                    center_x - 19,
+                    center_y - 4,
+                    center_x - 19,
+                    center_y + 4,
+                    center_x - 14,
+                    center_y + 8);
+        nvgMoveTo(v, center_x + 14, center_y - 8);
+        nvgBezierTo(v,
+                    center_x + 19,
+                    center_y - 4,
+                    center_x + 19,
+                    center_y + 4,
+                    center_x + 14,
+                    center_y + 8);
+        nvgStroke(v);
+    }
+    else if (icon == WarningIcon::tire) {
+        nvgBeginPath(v);
+        nvgMoveTo(v, center_x - 11, center_y - 9);
+        nvgBezierTo(v,
+                    center_x - 15,
+                    center_y,
+                    center_x - 11,
+                    center_y + 10,
+                    center_x - 5,
+                    center_y + 11);
+        nvgLineTo(v, center_x + 5, center_y + 11);
+        nvgBezierTo(v,
+                    center_x + 11,
+                    center_y + 10,
+                    center_x + 15,
+                    center_y,
+                    center_x + 11,
+                    center_y - 9);
+        nvgStroke(v);
+        txt(v, "!", center_x, center_y + 2, 14, color, NVG_ALIGN_CENTER);
+    }
+    else if (icon == WarningIcon::battery) {
+        nvgBeginPath(v);
+        nvgRoundedRect(v, center_x - 13, center_y - 8, 25, 16, 2);
+        nvgStroke(v);
+        nvgBeginPath(v);
+        nvgRect(v, center_x + 12, center_y - 4, 4, 8);
+        nvgFill(v);
+        txt(v, "!", center_x, center_y + 1, 13, color, NVG_ALIGN_CENTER);
+    }
+    else {
+        nvgBeginPath(v);
+        nvgMoveTo(v, center_x, center_y - 12);
+        nvgLineTo(v, center_x - 13, center_y + 11);
+        nvgLineTo(v, center_x + 13, center_y + 11);
+        nvgClosePath(v);
+        nvgStroke(v);
+        txt(v, "!", center_x, center_y + 3, 13, color, NVG_ALIGN_CENTER);
+    }
+    nvgRestore(v);
+}
 } // namespace
 void draw_driver_display(NVGcontext *v,
                          const Rect &bounds,
@@ -90,26 +234,9 @@ void draw_driver_display(NVGcontext *v,
     nvgRect(v, 0, 0, 1100, 600);
     nvgFillColor(v, bg);
     nvgFill(v);
-    txt(v,
-        "◀",
-        58,
-        50,
-        25,
-        d.warnings.left_indicator ? green : muted,
-        NVG_ALIGN_CENTER);
-    txt(v,
-        "▶",
-        1042,
-        50,
-        25,
-        d.warnings.right_indicator ? green : muted,
-        NVG_ALIGN_CENTER);
-    txt(v,
-        d.warnings.high_beam ? "HIGH BEAM" : "LIGHTS",
-        105,
-        50,
-        12,
-        d.warnings.high_beam ? cyan : muted);
+    turn_signal(v, 58, 50, true, d.warnings.left_indicator);
+    turn_signal(v, 1042, 50, false, d.warnings.right_indicator);
+    headlight_symbol(v, d.warnings.headlights, d.warnings.high_beam);
     box(v,
         487,
         34,
@@ -180,14 +307,19 @@ void draw_driver_display(NVGcontext *v,
     val(v, 258, 510, d.trip_distance_km, "km", white);
     title(v, "ODOMETER", 842, 510);
     val(v, 1048, 510, d.odometer_km, "km", white);
-    const char *ws[] = {"BELT", "BRAKE", "TIRE", "BATTERY", "!"};
-    bool on[] = {d.warnings.seat_belt,
-                 d.warnings.parking_brake,
-                 d.warnings.tire_pressure,
-                 d.warnings.battery_warning,
-                 d.warnings.general_warning};
-    for (int i = 0; i < 5; i++)
-        chip(v, ws[i], 286 + i * 102, 528, on[i], i == 3 ? red : amber);
+    const WarningIcon icons[] = {WarningIcon::seat_belt,
+                                 WarningIcon::parking_brake,
+                                 WarningIcon::tire,
+                                 WarningIcon::battery,
+                                 WarningIcon::general};
+    const bool active[] = {d.warnings.seat_belt,
+                           d.warnings.parking_brake,
+                           d.warnings.tire_pressure,
+                           d.warnings.battery_warning,
+                           d.warnings.general_warning};
+    for (int i = 0; i < 5; ++i)
+        warning_symbol(
+            v, icons[i], 330 + i * 102, 545, active[i], i == 3 ? red : amber);
     nvgRestore(v);
 }
 void draw_vehicle_details(NVGcontext *v,
