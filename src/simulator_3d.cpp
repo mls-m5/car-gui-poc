@@ -257,39 +257,39 @@ void Simulator3DRenderer::render(int viewport_x,
     const float car_x = (float)s.world_position_x_m;
     const float car_z = (float)s.world_position_z_m;
     quad(vertices,
-         {car_x - 350, 0, car_z - 350},
-         {car_x + 350, 0, car_z - 350},
-         {car_x + 350, 0, car_z + 350},
-         {car_x - 350, 0, car_z + 350},
+         {car_x - 350, -.02f, car_z - 350},
+         {car_x + 350, -.02f, car_z - 350},
+         {car_x + 350, -.02f, car_z + 350},
+         {car_x - 350, -.02f, car_z + 350},
          night ? std::array<float, 3>{.02f, .12f, .09f}
                : std::array<float, 3>{.12f, .38f, .16f});
     constexpr float world_end = 10000;
     quad(vertices,
-         {-5, .015f, -world_end},
-         {5, .015f, -world_end},
-         {5, .015f, world_end},
-         {-5, .015f, world_end},
+         {-5, .035f, -world_end},
+         {5, .035f, -world_end},
+         {5, .035f, world_end},
+         {-5, .035f, world_end},
          {.16f, .17f, .19f});
     quad(vertices,
-         {-5.05f, .025f, -world_end},
-         {-4.85f, .025f, -world_end},
-         {-4.85f, .025f, world_end},
-         {-5.05f, .025f, world_end},
+         {-5.05f, .05f, -world_end},
+         {-4.85f, .05f, -world_end},
+         {-4.85f, .05f, world_end},
+         {-5.05f, .05f, world_end},
          {.85f, .85f, .76f});
     quad(vertices,
-         {4.85f, .025f, -world_end},
-         {5.05f, .025f, -world_end},
-         {5.05f, .025f, world_end},
-         {4.85f, .025f, world_end},
+         {4.85f, .05f, -world_end},
+         {5.05f, .05f, -world_end},
+         {5.05f, .05f, world_end},
+         {4.85f, .05f, world_end},
          {.85f, .85f, .76f});
     const int first_stripe = (int)std::floor((car_z - 180) / 18.f);
     for (int i = first_stripe; i < first_stripe + 30; ++i) {
         const float z = i * 18.f;
         quad(vertices,
-             {-.09f, .03f, z},
-             {.09f, .03f, z},
-             {.09f, .03f, z + 8},
-             {-.09f, .03f, z + 8},
+             {-.09f, .055f, z},
+             {.09f, .055f, z},
+             {.09f, .055f, z + 8},
+             {-.09f, .055f, z + 8},
              {.9f, .82f, .32f});
     }
     const int first_tree = (int)std::floor((car_z - 180) / 24.f);

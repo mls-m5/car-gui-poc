@@ -4,7 +4,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <memory>
+#include <vector>
 
 namespace {
 constexpr double vehicle_mass_kg = 1950;
@@ -35,6 +37,47 @@ struct BulletVehicleSimulator::PhysicsState {
     std::unique_ptr<btRigidBody> ground_body;
     std::unique_ptr<btRigidBody> car_body;
     std::unique_ptr<btRaycastVehicle> vehicle;
+    std::vector<std::unique_ptr<btCollisionShape>> tree_shapes;
+    std::vector<std::unique_ptr<btDefaultMotionState>> tree_motions;
+    std::vector<std::unique_ptr<btRigidBody>> tree_bodies;
+    int tree_sector = std::numeric_limits<int>::min();
+
+    void update_tree_collisions(double car_z) {
+        constexpr double spacing = 24.0;
+        const int sector = (int)std::floor(car_z / spacing);
+        if (sector == tree_sector)
+            return;
+        for (auto &body : tree_bodies)
+            world.removeRigidBody(body.get());
+        tree_bodies.clear();
+        tree_motions.clear();
+        tree_shapes.clear();
+        for (int i = sector - 10; i < sector + 21; ++i) {
+            const int pattern = ((i % 7) + 7) % 7;
+            const double variation = pattern * .72;
+            const double z = i * spacing;
+            const double positions[2] = {-8.5 - variation, 8.5 + variation};
+            const double offsets[2] = {0, 9};
+            for (int side = 0; side < 2; ++side) {
+                auto shape =
+                    std::make_unique<btCylinderShape>(btVector3(.16, .9, .16));
+                btTransform transform;
+                transform.setIdentity();
+                transform.setOrigin(
+                    btVector3(positions[side], .9, z + offsets[side]));
+                auto motion = std::make_unique<btDefaultMotionState>(transform);
+                btRigidBody::btRigidBodyConstructionInfo info(
+                    0, motion.get(), shape.get());
+                info.m_friction = .8;
+                auto body = std::make_unique<btRigidBody>(info);
+                world.addRigidBody(body.get());
+                tree_shapes.push_back(std::move(shape));
+                tree_motions.push_back(std::move(motion));
+                tree_bodies.push_back(std::move(body));
+            }
+        }
+        tree_sector = sector;
+    }
 
     PhysicsState() {
         world.setGravity(btVector3(0, -gravity, 0));
@@ -72,6 +115,7 @@ struct BulletVehicleSimulator::PhysicsState {
             tuning, car_body.get(), &raycaster);
         vehicle->setCoordinateSystem(0, 1, 2);
         world.addAction(vehicle.get());
+        update_tree_collisions(0);
         constexpr btScalar wheel_radius = 0.38;
         constexpr btScalar suspension_rest = 0.38;
         const btVector3 wheel_direction(0, -1, 0);
@@ -102,6 +146,8 @@ struct BulletVehicleSimulator::PhysicsState {
         world.removeAction(vehicle.get());
         world.removeRigidBody(car_body.get());
         world.removeRigidBody(ground_body.get());
+        for (auto &body : tree_bodies)
+            world.removeRigidBody(body.get());
     }
 };
 
@@ -194,6 +240,7 @@ void BulletVehicleSimulator::advance(double dt) {
     btVector3 velocity = body.getLinearVelocity();
     speed_mps_ = std::hypot(velocity.x(), velocity.z());
     const btTransform transform = body.getWorldTransform();
+    physics_->update_tree_collisions(transform.getOrigin().z());
     const btVector3 forward = transform.getBasis() * btVector3(0, 0, 1);
     const double forward_speed = velocity.dot(forward);
     if (gear_ == Gear::park) {
