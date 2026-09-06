@@ -4,12 +4,11 @@ project(car-gui LANGUAGES C CXX)
 enable_testing()
 add_subdirectory(lib)
 
-find_package(SDL2 REQUIRED CONFIG)
-
 if(EMSCRIPTEN)
-    # Emscripten supplies SDL2 and GLES2 through its toolchain.
-    set(CAR_GUI_PLATFORM_LIBRARIES SDL2::SDL2)
+    # Emscripten supplies SDL2 and GLES2 through its ports.
+    set(CAR_GUI_PLATFORM_LIBRARIES)
 else()
+    find_package(SDL2 REQUIRED CONFIG)
     find_package(OpenGL REQUIRED COMPONENTS GLES2)
     set(CAR_GUI_PLATFORM_LIBRARIES SDL2::SDL2 OpenGL::GLES2)
 endif()
@@ -23,11 +22,13 @@ add_executable(car-gui
 
 target_compile_features(car-gui PRIVATE cxx_std_17)
 
-add_custom_command(TARGET car-gui POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${CMAKE_SOURCE_DIR}/assets"
-            "$<TARGET_FILE_DIR:car-gui>/assets"
-)
+if(NOT EMSCRIPTEN)
+    add_custom_command(TARGET car-gui POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_SOURCE_DIR}/assets"
+                "$<TARGET_FILE_DIR:car-gui>/assets"
+    )
+endif()
 
 target_link_libraries(car-gui
     PRIVATE
@@ -38,10 +39,16 @@ target_link_libraries(car-gui
 if(EMSCRIPTEN)
     target_compile_definitions(car-gui PRIVATE NANOVG_GLES2)
     target_link_options(car-gui PRIVATE
-        "-sUSE_SDL=2"
-        "-sMIN_WEBGL_VERSION=1"
-        "-sMAX_WEBGL_VERSION=1"
+        "SHELL:-s USE_SDL=2"
+        "SHELL:-s MIN_WEBGL_VERSION=1"
+        "SHELL:-s MAX_WEBGL_VERSION=1"
+        "SHELL:-s ALLOW_MEMORY_GROWTH=1"
+        "SHELL:--shell-file ${CMAKE_SOURCE_DIR}/web/shell.html"
+        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/assets@/assets"
     )
+    set_target_properties(car-gui PROPERTIES SUFFIX ".html")
 endif()
 
-add_subdirectory(test)
+if(BUILD_TESTING AND NOT EMSCRIPTEN)
+    add_subdirectory(test)
+endif()

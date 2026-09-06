@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EV Dashboard</title>
+  <style>
+    html, body, #app { width:100%; height:100%; margin:0; overflow:hidden; background:#0a101b; }
+    canvas { display:block; width:100%; height:100%; outline:none; }
+    #loading, #error { position:fixed; inset:0; display:grid; place-items:center; color:#ebf2fa; font:16px sans-serif; pointer-events:none; }
+    #error { color:#f55; padding:2rem; text-align:center; }
+  </style>
+</head>
+<body>
+  <main id="app">
+    <canvas id="canvas" tabindex="0" aria-label="Electric vehicle dashboard"></canvas>
+    <div id="loading">Loading dashboard…</div>
+    <div id="error" hidden></div>
+  </main>
+  <script>
+    var Module = {
+      canvas: document.getElementById('canvas'),
+      onRuntimeInitialized: function () {
+        document.getElementById('loading').hidden = true;
+        Module.canvas.focus();
+      },
+      onAbort: function (reason) {
+        document.getElementById('loading').hidden = true;
+        var error = document.getElementById('error');
+        error.hidden = false;
+        error.textContent = 'Dashboard failed to start: ' + reason;
+      }
+    };
+    document.getElementById('canvas').oncontextmenu = function () { return false; };
+  </script>
+  {{{ SCRIPT }}}
+</body>
+</html>

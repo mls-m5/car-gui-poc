@@ -42,3 +42,33 @@ Run the non-graphical checks with:
 ```sh
 ctest --test-dir build --output-on-failure
 ```
+
+## Browser build (Emscripten)
+
+Native builds use two SDL windows. Browsers use one canvas, so the web build
+provides `DRIVER`, `DETAILS`, and `SPLIT` views in an in-canvas navigation bar.
+Wide screens start in split view; narrow screens start on the driver view.
+Use the buttons or keys `1`, `2`, `3`, and `Tab` to switch views.
+
+Install and activate the official Emscripten SDK separately:
+
+```sh
+git clone https://github.com/emscripten-core/emsdk.git ~/Tools/emsdk
+cd ~/Tools/emsdk
+./emsdk install latest
+./emsdk activate latest
+source ./emsdk_env.sh
+```
+
+Then configure and launch through a local HTTP server:
+
+```sh
+emcmake cmake -S . -B build-web -DBUILD_TESTING=OFF
+cmake --build build-web --parallel
+emrun build-web/car-gui.html
+```
+
+The custom `web/shell.html` provides the full-screen page. Do not open the
+HTML with `file://`; packaged WebAssembly and assets must be served over HTTP.
+Emscripten supplies SDL2 and WebGL, while the project continues using NanoVG's
+GLES2 backend.

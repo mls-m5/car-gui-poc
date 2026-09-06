@@ -3,84 +3,215 @@
 #include <SDL2/SDL.h>
 #include <chrono>
 #include <iostream>
-#include <memory>
 #include <string>
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
+
 struct Display {
     SDL_Window *window = nullptr;
     SDL_GLContext context = nullptr;
     NVGcontext *vg = nullptr;
     bool open = false;
 };
-static void error(const char *s) {
-    std::cerr << s << ": " << SDL_GetError() << '\n';
+
+static void error(const char *message) {
+    std::cerr << message << ": " << SDL_GetError() << '\n';
 }
-static bool create_display(Display &d,
+
+static bool create_display(Display &display,
                            const char *title,
                            int x,
                            int y,
-                           int w,
-                           int h,
+                           int width,
+                           int height,
                            const char *font_path) {
-    d.window = SDL_CreateWindow(title,
-                                x,
-                                y,
-                                w,
-                                h,
-                                SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE |
-                                    SDL_WINDOW_ALLOW_HIGHDPI);
-    if (!d.window) {
+    display.window = SDL_CreateWindow(title,
+                                      x,
+                                      y,
+                                      width,
+                                      height,
+                                      SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE |
+                                          SDL_WINDOW_ALLOW_HIGHDPI);
+    if (!display.window) {
         error("SDL_CreateWindow");
         return false;
     }
-    d.context = SDL_GL_CreateContext(d.window);
-    if (!d.context) {
+    display.context = SDL_GL_CreateContext(display.window);
+    if (!display.context) {
         error("SDL_GL_CreateContext");
         return false;
     }
-    SDL_GL_MakeCurrent(d.window, d.context);
-    d.vg = nvgCreateGLES2(NVG_ANTIALIAS | NVG_STENCIL_STROKES);
-    if (!d.vg) {
+    if (SDL_GL_MakeCurrent(display.window, display.context) != 0) {
+        error("SDL_GL_MakeCurrent");
+        return false;
+    }
+    display.vg = nvgCreateGLES2(NVG_ANTIALIAS | NVG_STENCIL_STROKES);
+    if (!display.vg) {
         std::cerr << "nvgCreateGLES2 failed\n";
         return false;
     }
-    if (nvgCreateFont(d.vg, "regular", font_path) < 0) {
+    if (nvgCreateFont(display.vg, "regular", font_path) < 0) {
         std::cerr << "Could not load font: " << font_path << '\n';
         return false;
     }
-    d.open = true;
+    display.open = true;
     return true;
 }
-static void destroy(Display &d) {
-    if (d.vg) {
-        SDL_GL_MakeCurrent(d.window, d.context);
-        nvgDeleteGLES2(d.vg);
+
+static void destroy(Display &display) {
+    if (display.vg) {
+        SDL_GL_MakeCurrent(display.window, display.context);
+        nvgDeleteGLES2(display.vg);
     }
-    if (d.context)
-        SDL_GL_DeleteContext(d.context);
-    if (d.window)
-        SDL_DestroyWindow(d.window);
-    d = {};
+    if (display.context)
+        SDL_GL_DeleteContext(display.context);
+    if (display.window)
+        SDL_DestroyWindow(display.window);
+    display = {};
 }
-static void render(Display &d, const VehicleData &data, bool driver) {
-    if (!d.open)
+
+static void render(Display &display,
+                   const VehicleData &data,
+                   const Rect &bounds,
+                   bool driver) {
+    if (!display.open ||
+        SDL_GL_MakeCurrent(display.window, display.context) != 0)
         return;
-    SDL_GL_MakeCurrent(d.window, d.context);
-    int w, h, pw, ph;
-    SDL_GetWindowSize(d.window, &w, &h);
-    SDL_GL_GetDrawableSize(d.window, &pw, &ph);
-    if (w <= 0 || h <= 0 || pw <= 0 || ph <= 0)
+    int width = 0, height = 0, pixel_width = 0, pixel_height = 0;
+    SDL_GetWindowSize(display.window, &width, &height);
+    SDL_GL_GetDrawableSize(display.window, &pixel_width, &pixel_height);
+    if (width <= 0 || height <= 0 || pixel_width <= 0 || pixel_height <= 0)
         return;
+    glViewport(0, 0, pixel_width, pixel_height);
+    glClearColor(.04f, .06f, .1f, 1);
+    glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    nvgBeginFrame(
+        display.vg, (float)width, (float)height, (float)pixel_width / width);
+    if (driver)
+        draw_driver_display(display.vg, bounds, data);
+    else
+        draw_vehicle_details(display.vg, bounds, data);
+    nvgEndFrame(display.vg);
+    SDL_GL_SwapWindow(display.window);
+}
+
+#ifdef __EMSCRIPTEN__
+enum class WebView { driver, details, split };
+struct WebApplication {
+    Display display;
+    WebView view = WebView::driver;
+    SimulatedVehicleDataSource source;
+    double start = 0;
+};
+static void web_navigation(NVGcontext *vg, float width, WebView view) {
+    nvgBeginPath(vg);
+    nvgRect(vg, 0, 0, width, 56);
+    nvgFillColor(vg, nvgRGB(10, 16, 27));
+    nvgFill(vg);
+    nvgFontSize(vg, 20);
+    nvgFontFace(vg, "regular");
+    nvgFillColor(vg, nvgRGB(235, 242, 250));
+    nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+    nvgText(vg, "EV DASHBOARD", 20, 28, nullptr);
+    const char *labels[] = {"DRIVER", "DETAILS", "SPLIT"};
+    for (int i = 0; i < 3; i++) {
+        float x = width - 20 - 3 * 96 - 2 * 8 + i * 104;
+        bool selected = (i == 0 && view == WebView::driver) ||
+                        (i == 1 && view == WebView::details) ||
+                        (i == 2 && view == WebView::split);
+        nvgBeginPath(vg);
+        nvgRoundedRect(vg, x, 11, 96, 34, 8);
+        nvgFillColor(vg, selected ? nvgRGB(35, 130, 175) : nvgRGB(25, 38, 55));
+        nvgFill(vg);
+        nvgFontSize(vg, 12);
+        nvgFillColor(vg,
+                     selected ? nvgRGB(235, 250, 255) : nvgRGB(135, 157, 180));
+        nvgTextAlign(vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+        nvgText(vg, x + 48, 28, labels[i], nullptr);
+    }
+}
+static void web_frame(void *arg) {
+    auto &app = *static_cast<WebApplication *>(arg);
+    if (!app.display.open)
+        return;
+    SDL_Event event;
+    int width = 0, height = 0;
+    SDL_GetWindowSize(app.display.window, &width, &height);
+    while (SDL_PollEvent(&event)) {
+        if (event.type == SDL_QUIT)
+            app.display.open = false;
+        if (event.type == SDL_KEYDOWN) {
+            if (event.key.keysym.sym == SDLK_1)
+                app.view = WebView::driver;
+            if (event.key.keysym.sym == SDLK_2)
+                app.view = WebView::details;
+            if (event.key.keysym.sym == SDLK_3)
+                app.view = WebView::split;
+            if (event.key.keysym.sym == SDLK_TAB)
+                app.view = app.view == WebView::driver    ? WebView::details
+                           : app.view == WebView::details ? WebView::split
+                                                          : WebView::driver;
+        }
+        if (event.type == SDL_MOUSEBUTTONDOWN && event.button.y < 56) {
+            float x = event.button.x;
+            if (x > width - 20 - 3 * 96 - 2 * 8 && x < width - 20 - 2 * 96 - 8)
+                app.view = WebView::driver;
+            else if (x < width - 20 - 96)
+                app.view = WebView::details;
+            else
+                app.view = WebView::split;
+        }
+    }
+    int pw = 0, ph = 0;
+    SDL_GL_GetDrawableSize(app.display.window, &pw, &ph);
+    if (width <= 0 || height <= 0 || pw <= 0 || ph <= 0)
+        return;
+    SDL_GL_MakeCurrent(app.display.window, app.display.context);
     glViewport(0, 0, pw, ph);
     glClearColor(.04f, .06f, .1f, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-    nvgBeginFrame(d.vg, (float)w, (float)h, (float)pw / w);
-    if (driver)
-        draw_driver_display(d.vg, (float)w, (float)h, data);
-    else
-        draw_vehicle_details(d.vg, (float)w, (float)h, data);
-    nvgEndFrame(d.vg);
-    SDL_GL_SwapWindow(d.window);
+    nvgBeginFrame(
+        app.display.vg, (float)width, (float)height, (float)pw / width);
+    web_navigation(app.display.vg, (float)width, app.view);
+    Rect content{16, 72, (float)width - 32, (float)height - 88};
+    VehicleData data = app.source.sample(emscripten_get_now() / 1000.0);
+    if (app.view == WebView::driver)
+        draw_driver_display(app.display.vg, content, data);
+    else if (app.view == WebView::details)
+        draw_vehicle_details(app.display.vg, content, data);
+    else {
+        float gap = 16;
+        if (content.width >= 1100) {
+            float dw = (content.width - gap) * 1100 / 1950;
+            draw_driver_display(app.display.vg,
+                                {content.x, content.y, dw, content.height},
+                                data);
+            draw_vehicle_details(app.display.vg,
+                                 {content.x + dw + gap,
+                                  content.y,
+                                  content.width - dw - gap,
+                                  content.height},
+                                 data);
+        }
+        else {
+            float dh = (content.height - gap) * .48f;
+            draw_driver_display(app.display.vg,
+                                {content.x, content.y, content.width, dh},
+                                data);
+            draw_vehicle_details(app.display.vg,
+                                 {content.x,
+                                  content.y + dh + gap,
+                                  content.width,
+                                  content.height - dh - gap},
+                                 data);
+        }
+    }
+    nvgEndFrame(app.display.vg);
+    SDL_GL_SwapWindow(app.display.window);
 }
+#endif
+
 int main() {
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         error("SDL_Init");
@@ -91,8 +222,27 @@ int main() {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
-    std::string base = SDL_GetBasePath() ? SDL_GetBasePath() : "";
-    std::string font = base + "assets/fonts/DejaVuSans.ttf";
+#ifdef __EMSCRIPTEN__
+    WebApplication app;
+    app.start = 0;
+    if (!create_display(app.display,
+                        "EV Dashboard",
+                        SDL_WINDOWPOS_CENTERED,
+                        SDL_WINDOWPOS_CENTERED,
+                        1200,
+                        720,
+                        "/assets/fonts/DejaVuSans.ttf")) {
+        destroy(app.display);
+        SDL_Quit();
+        return 1;
+    }
+    emscripten_set_main_loop_arg(web_frame, &app, 0, true);
+#else
+    const char *base_path = SDL_GetBasePath();
+    std::string font =
+        std::string(base_path ? base_path : "") + "assets/fonts/DejaVuSans.ttf";
+    if (base_path)
+        SDL_free((void *)base_path);
     Display driver, details;
     if (!create_display(driver,
                         "EV Driver Display",
@@ -135,13 +285,24 @@ int main() {
                        std::chrono::steady_clock::now() - start)
                        .count();
         VehicleData data = source.sample(t);
+        int driver_width = 0, driver_height = 0, details_width = 0,
+            details_height = 0;
+        SDL_GetWindowSize(driver.window, &driver_width, &driver_height);
+        SDL_GetWindowSize(details.window, &details_width, &details_height);
         if (driver.open)
-            render(driver, data, true);
+            render(driver,
+                   data,
+                   {0, 0, (float)driver_width, (float)driver_height},
+                   true);
         if (details.open)
-            render(details, data, false);
+            render(details,
+                   data,
+                   {0, 0, (float)details_width, (float)details_height},
+                   false);
         SDL_Delay(16);
     }
     destroy(details);
     destroy(driver);
     SDL_Quit();
+#endif
 }

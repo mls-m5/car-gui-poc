@@ -63,12 +63,13 @@ void chip(NVGcontext *v,
 }
 } // namespace
 void draw_driver_display(NVGcontext *v,
-                         float w,
-                         float h,
+                         const Rect &bounds,
                          const VehicleData &d) {
-    float sx = std::min(w / 1100.f, h / 600.f), ox = (w - 1100 * sx) / 2,
-          oy = (h - 600 * sx) / 2;
+    float sx = std::min(bounds.width / 1100.f, bounds.height / 600.f),
+          ox = bounds.x + (bounds.width - 1100 * sx) / 2,
+          oy = bounds.y + (bounds.height - 600 * sx) / 2;
     nvgSave(v);
+    nvgScissor(v, bounds.x, bounds.y, bounds.width, bounds.height);
     nvgTranslate(v, ox, oy);
     nvgScale(v, sx, sx);
     nvgBeginPath(v);
@@ -176,12 +177,13 @@ void draw_driver_display(NVGcontext *v,
     nvgRestore(v);
 }
 void draw_vehicle_details(NVGcontext *v,
-                          float w,
-                          float h,
+                          const Rect &bounds,
                           const VehicleData &d) {
-    float sx = std::min(w / 850.f, h / 650.f), ox = (w - 850 * sx) / 2,
-          oy = (h - 650 * sx) / 2;
+    float sx = std::min(bounds.width / 850.f, bounds.height / 650.f),
+          ox = bounds.x + (bounds.width - 850 * sx) / 2,
+          oy = bounds.y + (bounds.height - 650 * sx) / 2;
     nvgSave(v);
+    nvgScissor(v, bounds.x, bounds.y, bounds.width, bounds.height);
     nvgTranslate(v, ox, oy);
     nvgScale(v, sx, sx);
     nvgBeginPath(v);
