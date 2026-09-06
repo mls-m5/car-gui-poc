@@ -29,4 +29,8 @@ private:
     GLint high_beam_uniform_ = -1;
     GLint car_position_uniform_ = -1;
     GLint car_forward_uniform_ = -1;
+    GLint camera_position_uniform_ = -1;
+    GLint fog_color_uniform_ = -1;
+    GLint fog_start_uniform_ = -1;
+    GLint fog_end_uniform_ = -1;
 };

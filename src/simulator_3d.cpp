@@ -141,6 +141,27 @@ void wheel(std::vector<Vertex> &v,
              color);
     }
 }
+void shadow_disc(std::vector<Vertex> &v,
+                 Vec3 center,
+                 float radius_x,
+                 float radius_z,
+                 float yaw,
+                 std::array<float, 3> color) {
+    constexpr int segments = 16;
+    const float sine = std::sin(yaw), cosine = std::cos(yaw);
+    for (int i = 0; i < segments; ++i) {
+        const float a0 = i * 2.f * 3.14159265f / segments;
+        const float a1 = (i + 1) * 2.f * 3.14159265f / segments;
+        auto point = [&](float angle) {
+            const float local_x = std::cos(angle) * radius_x;
+            const float local_z = std::sin(angle) * radius_z;
+            return Vec3{center.x + cosine * local_x + sine * local_z,
+                        center.y,
+                        center.z - sine * local_x + cosine * local_z};
+        };
+        triangle(v, center, point(a0), point(a1), color);
+    }
+}
 void pine(std::vector<Vertex> &v, float x, float z, float scale, bool night) {
     box(v,
         {x, .7f * scale, z},
@@ -187,15 +208,22 @@ bool Simulator3DRenderer::initialize() {
     const char *fragment_source =
         "precision mediump float; varying vec3 vColor; varying vec3 "
         "vWorldPosition; uniform float uHeadlights; uniform float uHighBeam; "
-        "uniform vec3 uCarPosition; uniform vec3 uCarForward; void main(){"
+        "uniform vec3 uCarPosition; uniform vec3 uCarForward; "
+        "uniform vec3 uCameraPosition; uniform vec3 uFogColor; "
+        "uniform float uFogStart; uniform float uFogEnd; void main(){"
         "vec3 toFragment=vWorldPosition-uCarPosition; float "
-        "distance=length(toFragment);"
+        "distance_to_light=length(toFragment);"
         "float cone=dot(normalize(toFragment),normalize(uCarForward));"
         "float cutoff=mix(0.78,0.90,uHighBeam); float "
         "range=mix(32.0,75.0,uHighBeam);"
         "float "
-        "beam=smoothstep(cutoff,1.0,cone)*(1.0-smoothstep(0.0,range,distance));"
+        "beam=smoothstep(cutoff,1.0,cone)*(1.0-smoothstep(0.0,range,distance_"
+        "to_light));"
         "vec3 result=vColor+vec3(0.8,0.68,0.3)*beam*uHeadlights;"
+        "float "
+        "fog=smoothstep(uFogStart,uFogEnd,distance(vWorldPosition,"
+        "uCameraPosition));"
+        "result=mix(result,uFogColor,fog);"
         "gl_FragColor=vec4(result,1.0);}";
     GLuint vertex = compile_shader(GL_VERTEX_SHADER, vertex_source),
            fragment = compile_shader(GL_FRAGMENT_SHADER, fragment_source);
@@ -224,6 +252,11 @@ bool Simulator3DRenderer::initialize() {
     high_beam_uniform_ = glGetUniformLocation(program_, "uHighBeam");
     car_position_uniform_ = glGetUniformLocation(program_, "uCarPosition");
     car_forward_uniform_ = glGetUniformLocation(program_, "uCarForward");
+    camera_position_uniform_ =
+        glGetUniformLocation(program_, "uCameraPosition");
+    fog_color_uniform_ = glGetUniformLocation(program_, "uFogColor");
+    fog_start_uniform_ = glGetUniformLocation(program_, "uFogStart");
+    fog_end_uniform_ = glGetUniformLocation(program_, "uFogEnd");
     glGenBuffers(1, &vertex_buffer_);
     return vertex_buffer_ != 0;
 }
@@ -297,16 +330,22 @@ void Simulator3DRenderer::render(int viewport_x,
         const float z = i * 24.f;
         const int pattern = ((i % 7) + 7) % 7;
         const float variation = pattern * .72f;
-        pine(vertices,
-             -8.5f - variation,
-             z,
-             1.05f + (pattern % 3) * .18f,
-             night);
-        pine(vertices,
-             8.5f + variation,
-             z + 9,
-             1.0f + ((pattern + 1) % 3) * .2f,
-             night);
+        const float left_scale = 1.05f + (pattern % 3) * .18f;
+        const float right_scale = 1.0f + ((pattern + 1) % 3) * .2f;
+        pine(vertices, -8.5f - variation, z, left_scale, night);
+        pine(vertices, 8.5f + variation, z + 9, right_scale, night);
+        shadow_disc(vertices,
+                    {-8.5f - variation, .065f, z},
+                    .9f * left_scale,
+                    .65f * left_scale,
+                    0,
+                    {.055f, .06f, .045f});
+        shadow_disc(vertices,
+                    {8.5f + variation, .065f, z + 9},
+                    .9f * right_scale,
+                    .65f * right_scale,
+                    0,
+                    {.055f, .06f, .045f});
     }
     const int first_mountain = (int)std::floor((car_z - 250) / 90.f);
     for (int i = first_mountain; i < first_mountain + 10; ++i) {
@@ -335,6 +374,13 @@ void Simulator3DRenderer::render(int viewport_x,
                     y,
                     car_z - yaw_sine * local_x + yaw_cosine * local_z};
     };
+    shadow_disc(vertices,
+                car_point(0, .065f, 0),
+                1.25f,
+                2.35f,
+                car_yaw,
+                night ? std::array<float, 3>{.035f, .045f, .06f}
+                      : std::array<float, 3>{.06f, .065f, .055f});
     oriented_box(vertices,
                  car_point(0, .48f, 0),
                  {1.9f, .65f, 4.2f},
@@ -406,6 +452,20 @@ void Simulator3DRenderer::render(int viewport_x,
     glUniform3f(
         car_position_uniform_, car_position.x, car_position.y, car_position.z);
     glUniform3f(car_forward_uniform_, forward.x, forward.y, forward.z);
+    glUniform3f(camera_position_uniform_,
+                camera_position.x,
+                camera_position.y,
+                camera_position.z);
+    if (night) {
+        glUniform3f(fog_color_uniform_, .025f, .055f, .12f);
+        glUniform1f(fog_start_uniform_, 55.f);
+        glUniform1f(fog_end_uniform_, 180.f);
+    }
+    else {
+        glUniform3f(fog_color_uniform_, .34f, .68f, .87f);
+        glUniform1f(fog_start_uniform_, 90.f);
+        glUniform1f(fog_end_uniform_, 280.f);
+    }
     glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_);
     glBufferData(GL_ARRAY_BUFFER,
                  vertices.size() * sizeof(Vertex),
