@@ -19,6 +19,9 @@ constexpr double rolling_coefficient = 0.011;
 constexpr double gravity = 9.81;
 constexpr double drivetrain_efficiency = 0.91;
 constexpr double regeneration_efficiency = 0.68;
+constexpr double normal_brake_force = 5000;
+constexpr double emergency_brake_force = 12000;
+constexpr double maximum_regenerative_power_w = 35000;
 } // namespace
 
 struct BulletVehicleSimulator::PhysicsState {
@@ -197,7 +200,11 @@ void BulletVehicleSimulator::advance(double dt) {
     const btVector3 old_velocity = body.getLinearVelocity();
     const double old_speed = std::hypot(old_velocity.x(), old_velocity.z());
     const double throttle = controls_.throttle ? 1.0 : 0.0;
-    const double brake = controls_.brake ? 1.0 : 0.0;
+    const double brake_target =
+        controls_.brake || controls_.emergency_brake ? 1.0 : 0.0;
+    const double brake_response = controls_.emergency_brake ? 10.0 : 4.5;
+    brake_application_ += (brake_target - brake_application_) *
+                          std::min(1.0, dt * brake_response);
     const bool can_drive = gear_ == Gear::drive || gear_ == Gear::reverse;
     const double direction = gear_ == Gear::reverse ? -1.0 : 1.0;
     const double power_limit = visual_.drivetrain_fault || visual_.battery_fault
@@ -222,7 +229,8 @@ void BulletVehicleSimulator::advance(double dt) {
         (btScalar)(traction_magnitude * direction * 0.5), 3);
 
     const double brake_magnitude =
-        brake * 10000 + (controls_.emergency_brake ? 18000 : 0);
+        brake_application_ * (controls_.emergency_brake ? emergency_brake_force
+                                                        : normal_brake_force);
     for (int wheel = 0; wheel < physics_->vehicle->getNumWheels(); ++wheel)
         physics_->vehicle->setBrake((btScalar)(brake_magnitude * 0.25), wheel);
 
@@ -269,7 +277,8 @@ void BulletVehicleSimulator::advance(double dt) {
     const double mechanical_drive_w = traction_magnitude * average_speed;
     const double regenerative_w =
         brake_magnitude > 0 && average_speed > 1
-            ? std::min(50000.0, brake_magnitude * average_speed)
+            ? std::min(maximum_regenerative_power_w,
+                       brake_magnitude * average_speed * 0.45)
             : 0;
     if (mechanical_drive_w > 0) {
         const double electrical_kwh =

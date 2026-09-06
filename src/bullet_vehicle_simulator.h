@@ -32,6 +32,7 @@ private:
     Gear gear_ = Gear::drive;
     double previous_time_ = -1;
     double speed_mps_ = 0;
+    double brake_application_ = 0;
     double last_power_kw_ = 0;
     double battery_energy_kwh_ = 48;
     double trip_distance_km_ = 0;
