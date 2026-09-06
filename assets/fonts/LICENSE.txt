@@ -1,0 +1,6 @@
+DejaVu Sans fonts are from the DejaVu fonts project.
+Copyright 2003 The Bitstream Vera fonts Copyright holder.
+Copyright 2006 Tavmjong Bah. All Rights Reserved.
+
+The fonts are licensed under the Bitstream Vera and DejaVu licenses.
+See https://dejavu-fonts.github.io/License.html for the full license.

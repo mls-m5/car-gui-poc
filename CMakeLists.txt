@@ -17,9 +17,17 @@ endif()
 add_executable(car-gui
     src/main.cpp
     src/nanovg_gles2.cpp
+    src/dashboard.cpp
+    src/simulated_vehicle_data.cpp
 )
 
 target_compile_features(car-gui PRIVATE cxx_std_17)
+
+add_custom_command(TARGET car-gui POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/assets"
+            "$<TARGET_FILE_DIR:car-gui>/assets"
+)
 
 target_link_libraries(car-gui
     PRIVATE

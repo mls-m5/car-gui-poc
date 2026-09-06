@@ -14,9 +14,15 @@ cmake -S . -B build
 cmake --build build --parallel
 ```
 
-Run `git diff --check` after editing files. When graphical behavior changes,
-launch `./build/car-gui` in a graphical session and verify that it starts
-without errors.
+Run `clang-format` on all changed C/C++ source and header files when the
+implementation is complete, then run `git diff --check`. For example:
+
+```sh
+clang-format -i src/*.cpp src/*.h test/*.cpp
+```
+
+When graphical behavior changes, launch `./build/car-gui` in a graphical
+session and verify that it starts without errors.
 
 ## Portability
 
