@@ -39,6 +39,20 @@ void val(NVGcontext *v,
 void title(NVGcontext *v, const char *s, float x, float y) {
     txt(v, s, x, y, 16, muted);
 }
+void trip_metric(NVGcontext *v,
+                 const char *label,
+                 float y,
+                 double number,
+                 const char *unit,
+                 NVGcolor color = white) {
+    constexpr float right_edge = 806;
+    txt(v, label, 589, y, 11, muted);
+    nvgFontSize(v, 12);
+    nvgFontFace(v, "regular");
+    nvgTextAlign(v, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
+    const float unit_width = nvgTextBounds(v, 0, y, unit, nullptr, nullptr);
+    val(v, right_edge - unit_width - 7, y, number, unit, color);
+}
 void bar(NVGcontext *v, float x, float y, float w, float p, NVGcolor c) {
     box(v, x, y, w, 10, nvgRGB(42, 55, 72));
     nvgBeginPath(v);
@@ -276,9 +290,11 @@ void draw_vehicle_details(NVGcontext *v,
     char b[32];
     std::snprintf(b, sizeof b, "%.1f km", d.trip_distance_km);
     txt(v, b, 697, 438, 27, white, NVG_ALIGN_CENTER);
-    val(v, 806, 486, d.trip_energy_used_kwh, "kWh");
-    val(v, 806, 520, d.trip_energy_regenerated_kwh, "kWh", green);
-    val(v, 806, 554, d.average_consumption_kwh_per_100km, "kWh/100");
+    trip_metric(v, "ENERGY USED", 486, d.trip_energy_used_kwh, "kWh");
+    trip_metric(
+        v, "REGENERATED", 520, d.trip_energy_regenerated_kwh, "kWh", green);
+    trip_metric(
+        v, "AVERAGE", 554, d.average_consumption_kwh_per_100km, "kWh/100");
     txt(v, "SIMULATED DATA • POC", 24, 618, 12, amber);
     txt(v, "GLES2 / NANOVG", 826, 618, 11, muted, NVG_ALIGN_RIGHT);
     nvgRestore(v);
