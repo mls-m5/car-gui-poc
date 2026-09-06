@@ -25,4 +25,8 @@ private:
     GLint position_attribute_ = -1;
     GLint color_attribute_ = -1;
     GLint view_projection_uniform_ = -1;
+    GLint headlights_uniform_ = -1;
+    GLint high_beam_uniform_ = -1;
+    GLint car_position_uniform_ = -1;
+    GLint car_forward_uniform_ = -1;
 };

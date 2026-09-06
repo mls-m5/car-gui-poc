@@ -177,12 +177,11 @@ static void handle_simulator_toggle(InteractiveVehicleSimulator &simulator,
 }
 
 #ifdef __EMSCRIPTEN__
-enum class WebView { simulator_3d, simulator_2d, driver, details, combined };
+enum class WebView { simulator_3d, driver, details, combined };
 struct WebApplication {
     Display display;
     WebView view = WebView::simulator_3d;
     BulletVehicleSimulator simulator_3d;
-    TwoDVehicleSimulator simulator_2d;
     InteractiveVehicleSimulator *active_source = &simulator_3d;
 };
 static WebApplication web_application;
@@ -209,7 +208,7 @@ static float web_button_width(float width) {
 }
 static float web_button_start(float width) {
     const float button_width = web_button_width(width);
-    return width - (width < 700 ? 10 : 20) - button_width * 5 - 32;
+    return width - (width < 700 ? 10 : 20) - button_width * 4 - 24;
 }
 static void web_navigation(NVGcontext *vg, float width, WebView view) {
     nvgBeginPath(vg);
@@ -221,18 +220,16 @@ static void web_navigation(NVGcontext *vg, float width, WebView view) {
     nvgFillColor(vg, nvgRGB(235, 242, 250));
     nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
     nvgText(vg, 20, 28, width < 700 ? "" : "EV DASHBOARD", nullptr);
-    const char *wide_labels[] = {
-        "3D DRIVE", "2D DRIVE", "DRIVER", "DETAILS", "ALL"};
-    const char *narrow_labels[] = {"3D", "2D", "DRV", "INFO", "BOTH"};
+    const char *wide_labels[] = {"3D DRIVE", "DRIVER", "DETAILS", "ALL"};
+    const char *narrow_labels[] = {"3D", "DRV", "INFO", "ALL"};
     const float button_width = web_button_width(width);
     const float start = web_button_start(width);
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 4; i++) {
         float x = start + i * (button_width + 8);
         bool selected = (i == 0 && view == WebView::simulator_3d) ||
-                        (i == 1 && view == WebView::simulator_2d) ||
-                        (i == 2 && view == WebView::driver) ||
-                        (i == 3 && view == WebView::details) ||
-                        (i == 4 && view == WebView::combined);
+                        (i == 1 && view == WebView::driver) ||
+                        (i == 2 && view == WebView::details) ||
+                        (i == 3 && view == WebView::combined);
         nvgBeginPath(vg);
         nvgRoundedRect(vg, x, 11, button_width, 34, 8);
         nvgFillColor(vg, selected ? nvgRGB(35, 130, 175) : nvgRGB(25, 38, 55));
@@ -264,40 +261,34 @@ static void web_frame(void *arg) {
             if (event.key.keysym.sym == SDLK_1)
                 app.view = WebView::simulator_3d;
             if (event.key.keysym.sym == SDLK_2)
-                app.view = WebView::simulator_2d;
-            if (event.key.keysym.sym == SDLK_3)
                 app.view = WebView::driver;
-            if (event.key.keysym.sym == SDLK_4)
+            if (event.key.keysym.sym == SDLK_3)
                 app.view = WebView::details;
-            if (event.key.keysym.sym == SDLK_5)
+            if (event.key.keysym.sym == SDLK_4)
                 app.view = WebView::combined;
             if (event.key.keysym.sym == SDLK_TAB)
-                app.view =
-                    app.view == WebView::simulator_3d   ? WebView::simulator_2d
-                    : app.view == WebView::simulator_2d ? WebView::driver
-                    : app.view == WebView::driver       ? WebView::details
-                    : app.view == WebView::details      ? WebView::combined
-                                                        : WebView::simulator_3d;
+                app.view = app.view == WebView::simulator_3d ? WebView::driver
+                           : app.view == WebView::driver     ? WebView::details
+                           : app.view == WebView::details
+                               ? WebView::combined
+                               : WebView::simulator_3d;
         }
         if (event.type == SDL_MOUSEBUTTONDOWN && event.button.y < 56) {
             const float x = event.button.x;
             const float button_width = web_button_width((float)width);
             const float start = web_button_start((float)width);
-            for (int i = 0; i < 5; ++i) {
+            for (int i = 0; i < 4; ++i) {
                 const float left = start + i * (button_width + 8);
                 if (x >= left && x <= left + button_width)
                     app.view = i == 0   ? WebView::simulator_3d
-                               : i == 1 ? WebView::simulator_2d
-                               : i == 2 ? WebView::driver
-                               : i == 3 ? WebView::details
+                               : i == 1 ? WebView::driver
+                               : i == 2 ? WebView::details
                                         : WebView::combined;
             }
         }
     }
     if (app.view == WebView::simulator_3d || app.view == WebView::combined)
         app.active_source = &app.simulator_3d;
-    else if (app.view == WebView::simulator_2d)
-        app.active_source = &app.simulator_2d;
     update_simulator_controls(*app.active_source);
     VehicleData data = app.active_source->sample(emscripten_get_now() / 1000.0);
     int pw = 0, ph = 0;
@@ -330,9 +321,6 @@ static void web_frame(void *arg) {
     if (app.view == WebView::simulator_3d)
         draw_simulator_hud(
             app.display.vg, content, app.simulator_3d.visual_state());
-    else if (app.view == WebView::simulator_2d)
-        draw_simulator_view(
-            app.display.vg, content, app.simulator_2d.visual_state());
     else if (app.view == WebView::driver)
         draw_driver_display(app.display.vg, content, data);
     else if (app.view == WebView::details)

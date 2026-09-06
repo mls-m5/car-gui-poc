@@ -28,11 +28,13 @@ struct BulletVehicleSimulator::PhysicsState {
         &dispatcher, &broadphase, &solver, &collision_configuration};
     btStaticPlaneShape ground_shape{btVector3(0, 1, 0), 0};
     btBoxShape car_shape{btVector3(0.95, 0.35, 2.2)};
+    btDefaultVehicleRaycaster raycaster{&world};
+    btRaycastVehicle::btVehicleTuning tuning;
     std::unique_ptr<btDefaultMotionState> ground_motion;
     std::unique_ptr<btDefaultMotionState> car_motion;
     std::unique_ptr<btRigidBody> ground_body;
     std::unique_ptr<btRigidBody> car_body;
-    double heading = 0;
+    std::unique_ptr<btRaycastVehicle> vehicle;
 
     PhysicsState() {
         world.setGravity(btVector3(0, -gravity, 0));
@@ -42,28 +44,62 @@ struct BulletVehicleSimulator::PhysicsState {
             std::make_unique<btDefaultMotionState>(ground_transform);
         btRigidBody::btRigidBodyConstructionInfo ground_info(
             0, ground_motion.get(), &ground_shape);
-        ground_info.m_friction = 0;
+        ground_info.m_friction = 1;
         ground_body = std::make_unique<btRigidBody>(ground_info);
         world.addRigidBody(ground_body.get());
 
         btTransform car_transform;
         car_transform.setIdentity();
-        car_transform.setOrigin(btVector3(0, 0.36, 0));
+        car_transform.setOrigin(btVector3(0, 1.0, 0));
         car_motion = std::make_unique<btDefaultMotionState>(car_transform);
         btVector3 inertia;
         car_shape.calculateLocalInertia(vehicle_mass_kg, inertia);
         btRigidBody::btRigidBodyConstructionInfo car_info(
             vehicle_mass_kg, car_motion.get(), &car_shape, inertia);
-        car_info.m_friction = 0;
-        car_info.m_linearDamping = 0;
-        car_info.m_angularDamping = 1;
+        car_info.m_friction = 0.2;
+        car_info.m_angularDamping = 0.7;
         car_body = std::make_unique<btRigidBody>(car_info);
-        car_body->setAngularFactor(btVector3(0, 0, 0));
+        car_body->setAngularFactor(btVector3(0, 1, 0));
         car_body->setActivationState(DISABLE_DEACTIVATION);
         world.addRigidBody(car_body.get());
+
+        tuning.m_suspensionStiffness = 24;
+        tuning.m_suspensionCompression = 4.4;
+        tuning.m_suspensionDamping = 2.3;
+        tuning.m_frictionSlip = 2.4;
+        tuning.m_maxSuspensionForce = 9000;
+        vehicle = std::make_unique<btRaycastVehicle>(
+            tuning, car_body.get(), &raycaster);
+        vehicle->setCoordinateSystem(0, 1, 2);
+        world.addAction(vehicle.get());
+        constexpr btScalar wheel_radius = 0.38;
+        constexpr btScalar suspension_rest = 0.38;
+        const btVector3 wheel_direction(0, -1, 0);
+        const btVector3 wheel_axle(-1, 0, 0);
+        for (int front = 0; front < 2; ++front) {
+            const btScalar z = front == 0 ? 1.45 : -1.45;
+            for (int side = 0; side < 2; ++side) {
+                const btScalar x = side == 0 ? -0.92 : 0.92;
+                vehicle->addWheel(btVector3(x, 0.25, z),
+                                  wheel_direction,
+                                  wheel_axle,
+                                  suspension_rest,
+                                  wheel_radius,
+                                  tuning,
+                                  front == 0);
+                btWheelInfo &wheel =
+                    vehicle->getWheelInfo(vehicle->getNumWheels() - 1);
+                wheel.m_rollInfluence = 0.08;
+                wheel.m_wheelsDampingCompression = 4.4;
+                wheel.m_wheelsDampingRelaxation = 2.3;
+                wheel.m_suspensionStiffness = 24;
+                wheel.m_frictionSlip = 2.4;
+            }
+        }
     }
 
     ~PhysicsState() {
+        world.removeAction(vehicle.get());
         world.removeRigidBody(car_body.get());
         world.removeRigidBody(ground_body.get());
     }
@@ -126,37 +162,40 @@ void BulletVehicleSimulator::advance(double dt) {
             ? std::min(8500.0, power_limit / std::max(3.0, old_speed))
             : 0;
 
-    const double steer_target = (controls_.steer_right ? 1.0 : 0.0) -
-                                (controls_.steer_left ? 1.0 : 0.0);
+    // Bullet's positive steering angle turns left, matching A/Left.
+    const double steer_target = (controls_.steer_left ? 1.0 : 0.0) -
+                                (controls_.steer_right ? 1.0 : 0.0);
     visual_.steering +=
         (steer_target - visual_.steering) * std::min(1.0, dt * 5.0);
-    physics_->heading += visual_.steering * old_speed * dt * 0.018;
-    const btVector3 forward(
-        std::sin(physics_->heading), 0, std::cos(physics_->heading));
-    const btVector3 right(forward.z(), 0, -forward.x());
-    const btVector3 horizontal_velocity(old_velocity.x(), 0, old_velocity.z());
-    const double forward_speed = horizontal_velocity.dot(forward);
-    const double speed_abs = horizontal_velocity.length();
+    const btScalar steering_angle = (btScalar)(visual_.steering * 0.48);
+    physics_->vehicle->setSteeringValue(steering_angle, 0);
+    physics_->vehicle->setSteeringValue(steering_angle, 1);
+    physics_->vehicle->applyEngineForce(
+        (btScalar)(traction_magnitude * direction * 0.5), 2);
+    physics_->vehicle->applyEngineForce(
+        (btScalar)(traction_magnitude * direction * 0.5), 3);
 
+    const double brake_magnitude =
+        brake * 10000 + (controls_.emergency_brake ? 18000 : 0);
+    for (int wheel = 0; wheel < physics_->vehicle->getNumWheels(); ++wheel)
+        physics_->vehicle->setBrake((btScalar)(brake_magnitude * 0.25), wheel);
+
+    const btVector3 horizontal_velocity(old_velocity.x(), 0, old_velocity.z());
+    const double speed_abs = horizontal_velocity.length();
     body.clearForces();
-    body.applyCentralForce(forward * (traction_magnitude * direction));
     if (speed_abs > 0.02) {
         const double resistance =
             0.5 * air_density * drag_area * speed_abs * speed_abs +
             rolling_coefficient * vehicle_mass_kg * gravity;
         body.applyCentralForce(-horizontal_velocity.normalized() * resistance);
     }
-    const double brake_magnitude =
-        brake * 10000 + (controls_.emergency_brake ? 18000 : 0);
-    if (speed_abs > 0.02)
-        body.applyCentralForce(-horizontal_velocity.normalized() *
-                               brake_magnitude);
-    const double lateral_speed = horizontal_velocity.dot(right);
-    body.applyCentralForce(right * (-lateral_speed * vehicle_mass_kg * 4.5));
+    physics_->world.stepSimulation(dt, 3, 1.0 / 120.0);
 
-    physics_->world.stepSimulation(dt, 2, 1.0 / 120.0);
     btVector3 velocity = body.getLinearVelocity();
     speed_mps_ = std::hypot(velocity.x(), velocity.z());
+    const btTransform transform = body.getWorldTransform();
+    const btVector3 forward = transform.getBasis() * btVector3(0, 0, 1);
+    const double forward_speed = velocity.dot(forward);
     if (gear_ == Gear::park) {
         velocity.setX(0);
         velocity.setZ(0);
@@ -168,17 +207,13 @@ void BulletVehicleSimulator::advance(double dt) {
         body.setLinearVelocity(velocity);
         speed_mps_ = maximum_reverse_speed_mps;
     }
-    if (gear_ == Gear::drive && forward_speed < -0.2) {
+    if ((gear_ == Gear::drive && forward_speed < -0.2) ||
+        (gear_ == Gear::reverse && forward_speed > 0.2)) {
         velocity.setX(0);
         velocity.setZ(0);
         body.setLinearVelocity(velocity);
         speed_mps_ = 0;
     }
-
-    btTransform transform = body.getWorldTransform();
-    transform.setRotation(btQuaternion(btVector3(0, 1, 0), physics_->heading));
-    body.setWorldTransform(transform);
-    body.getMotionState()->setWorldTransform(transform);
 
     const double average_speed = (old_speed + speed_mps_) * 0.5;
     const double travelled_m = average_speed * dt;
@@ -208,8 +243,10 @@ void BulletVehicleSimulator::advance(double dt) {
     battery_energy_kwh_ =
         std::clamp(battery_energy_kwh_, 0.0, battery_capacity_kwh);
 
-    visual_.lateral_position_m = transform.getOrigin().x();
-    visual_.heading_radians = physics_->heading;
+    visual_.world_position_x_m = transform.getOrigin().x();
+    visual_.world_position_z_m = transform.getOrigin().z();
+    visual_.lateral_position_m = visual_.world_position_x_m;
+    visual_.heading_radians = std::atan2(forward.x(), forward.z());
     visual_.speed_kph = speed_mps_ * 3.6;
     const double load = mechanical_drive_w / maximum_drive_power_w;
     battery_temperature_c_ +=

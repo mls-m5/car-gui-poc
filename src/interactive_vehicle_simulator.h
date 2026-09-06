@@ -13,6 +13,8 @@ struct SimulatorControls {
 struct SimulatorVisualState {
     double distance_m = 0;
     double lateral_position_m = 0;
+    double world_position_x_m = 0;
+    double world_position_z_m = 0;
     double steering = 0;
     double heading_radians = 0;
     double speed_kph = 0;

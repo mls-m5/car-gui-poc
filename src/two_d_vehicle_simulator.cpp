@@ -119,6 +119,8 @@ void TwoDVehicleSimulator::advance(double dt) {
     visual_.lateral_position_m *= std::max(0.0, 1.0 - dt * 0.08);
     visual_.lateral_position_m =
         std::clamp(visual_.lateral_position_m, -5.5, 5.5);
+    visual_.world_position_x_m = visual_.lateral_position_m;
+    visual_.world_position_z_m = visual_.distance_m;
     visual_.speed_kph = speed_abs * 3.6;
 
     const double load = std::abs(drive_power_w) / maximum_drive_power_w;

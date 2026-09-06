@@ -42,6 +42,10 @@ lightweight vehicle model and remains available:
 ./build/car-gui --backend=simulator --view=2d
 ```
 
+The 3D simulator uses Bullet's raycast vehicle with four suspension wheels and
+steerable front wheels. Its camera follows the vehicle through fixed world
+space, so steering changes both the car heading and the view direction.
+
 Simulator controls:
 
 - `W`/Up accelerates; `S`/Down brakes; Space applies emergency braking.
@@ -71,11 +75,12 @@ ctest --test-dir build --output-on-failure
 ## Browser build (Emscripten)
 
 Native builds use two SDL windows. Browsers use one canvas, so the web build
-provides `3D DRIVE`, `2D DRIVE`, `DRIVER`, `DETAILS`, and `ALL` views in an
-in-canvas navigation bar. The Bullet-powered 3D road is selected by default.
-`ALL` places the 3D road above both live dashboard panels. Use the buttons,
-keys `1` through `5`, or `Tab` to switch views. The same driving and fault
-controls listed above work while the canvas has focus.
+provides `3D DRIVE`, `DRIVER`, `DETAILS`, and `ALL` views in an in-canvas
+navigation bar. The Bullet-powered 3D road is selected by default. `ALL`
+places the 3D road above both live dashboard panels. The lightweight 2D road
+is native-only (`--view=2d`). Use the buttons, keys `1` through `4`, or `Tab`
+to switch browser views. The same driving and fault controls listed above
+work while the canvas has focus.
 
 Install and activate the official Emscripten SDK separately:
 
