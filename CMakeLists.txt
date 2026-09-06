@@ -18,6 +18,8 @@ add_executable(car-gui
     src/nanovg_gles2.cpp
     src/dashboard.cpp
     src/simulated_vehicle_data.cpp
+    src/interactive_vehicle_simulator.cpp
+    src/simulator_view.cpp
 )
 
 target_compile_features(car-gui PRIVATE cxx_std_17)

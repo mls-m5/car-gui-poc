@@ -1,4 +1,6 @@
 #include "dashboard.h"
+#include "interactive_vehicle_simulator.h"
+#include "simulator_view.h"
 #include <GLES2/gl2.h>
 #include <SDL2/SDL.h>
 #include <algorithm>
@@ -73,10 +75,12 @@ static void destroy(Display &display) {
     display = {};
 }
 
+enum class DisplayContent { driver, details, simulator };
+
 static void render(Display &display,
                    const VehicleData &data,
-                   const Rect &bounds,
-                   bool driver) {
+                   DisplayContent content,
+                   const SimulatorVisualState *visual = nullptr) {
     if (!display.open ||
         SDL_GL_MakeCurrent(display.window, display.context) != 0)
         return;
@@ -90,20 +94,74 @@ static void render(Display &display,
     glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
     nvgBeginFrame(
         display.vg, (float)width, (float)height, (float)pixel_width / width);
-    if (driver)
+    const Rect bounds{0, 0, (float)width, (float)height};
+    if (content == DisplayContent::driver)
         draw_driver_display(display.vg, bounds, data);
-    else
+    else if (content == DisplayContent::details)
         draw_vehicle_details(display.vg, bounds, data);
+    else if (visual)
+        draw_simulator_view(display.vg, bounds, *visual);
     nvgEndFrame(display.vg);
     SDL_GL_SwapWindow(display.window);
 }
 
+static void update_simulator_controls(InteractiveVehicleSimulator &simulator) {
+    const Uint8 *keys = SDL_GetKeyboardState(nullptr);
+    SimulatorControls controls;
+    controls.throttle = keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP];
+    controls.brake = keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN];
+    controls.steer_left = keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT];
+    controls.steer_right = keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT];
+    controls.emergency_brake = keys[SDL_SCANCODE_SPACE];
+    simulator.set_controls(controls);
+}
+
+static void handle_simulator_toggle(InteractiveVehicleSimulator &simulator,
+                                    const SDL_KeyboardEvent &event) {
+    if (event.repeat)
+        return;
+    switch (event.keysym.sym) {
+    case SDLK_p:
+        simulator.set_gear(Gear::park);
+        break;
+    case SDLK_r:
+        simulator.set_gear(Gear::reverse);
+        break;
+    case SDLK_n:
+        simulator.set_gear(Gear::neutral);
+        break;
+    case SDLK_g:
+        simulator.set_gear(Gear::drive);
+        break;
+    case SDLK_l:
+        simulator.toggle_headlights();
+        break;
+    case SDLK_h:
+        simulator.toggle_high_beam();
+        break;
+    case SDLK_b:
+        simulator.toggle_battery_fault();
+        break;
+    case SDLK_t:
+        simulator.toggle_tire_fault();
+        break;
+    case SDLK_f:
+        simulator.toggle_drivetrain_fault();
+        break;
+    case SDLK_x:
+        simulator.toggle_seat_belt();
+        break;
+    default:
+        break;
+    }
+}
+
 #ifdef __EMSCRIPTEN__
-enum class WebView { driver, details, split };
+enum class WebView { simulator, driver, details, split };
 struct WebApplication {
     Display display;
-    WebView view = WebView::driver;
-    SimulatedVehicleDataSource source;
+    WebView view = WebView::simulator;
+    InteractiveVehicleSimulator source;
 };
 static WebApplication web_application;
 static void resize_web_canvas() {
@@ -125,11 +183,11 @@ static void resize_web_canvas() {
             "#canvas", target_width, target_height);
 }
 static float web_button_width(float width) {
-    return width < 700 ? 76 : 96;
+    return width < 700 ? 64 : 92;
 }
 static float web_button_start(float width) {
     const float button_width = web_button_width(width);
-    return width - 20 - button_width * 3 - 16;
+    return width - 20 - button_width * 4 - 24;
 }
 static void web_navigation(NVGcontext *vg, float width, WebView view) {
     nvgBeginPath(vg);
@@ -141,15 +199,16 @@ static void web_navigation(NVGcontext *vg, float width, WebView view) {
     nvgFillColor(vg, nvgRGB(235, 242, 250));
     nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
     nvgText(vg, 20, 28, width < 700 ? "EV" : "EV DASHBOARD", nullptr);
-    const char *wide_labels[] = {"DRIVER", "DETAILS", "SPLIT"};
-    const char *narrow_labels[] = {"DRV", "INFO", "BOTH"};
+    const char *wide_labels[] = {"SIMULATOR", "DRIVER", "DETAILS", "SPLIT"};
+    const char *narrow_labels[] = {"SIM", "DRV", "INFO", "BOTH"};
     const float button_width = web_button_width(width);
     const float start = web_button_start(width);
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 4; i++) {
         float x = start + i * (button_width + 8);
-        bool selected = (i == 0 && view == WebView::driver) ||
-                        (i == 1 && view == WebView::details) ||
-                        (i == 2 && view == WebView::split);
+        bool selected = (i == 0 && view == WebView::simulator) ||
+                        (i == 1 && view == WebView::driver) ||
+                        (i == 2 && view == WebView::details) ||
+                        (i == 3 && view == WebView::split);
         nvgBeginPath(vg);
         nvgRoundedRect(vg, x, 11, button_width, 34, 8);
         nvgFillColor(vg, selected ? nvgRGB(35, 130, 175) : nvgRGB(25, 38, 55));
@@ -177,26 +236,31 @@ static void web_frame(void *arg) {
         if (event.type == SDL_QUIT)
             app.display.open = false;
         if (event.type == SDL_KEYDOWN) {
+            handle_simulator_toggle(app.source, event.key);
             if (event.key.keysym.sym == SDLK_1)
-                app.view = WebView::driver;
+                app.view = WebView::simulator;
             if (event.key.keysym.sym == SDLK_2)
-                app.view = WebView::details;
+                app.view = WebView::driver;
             if (event.key.keysym.sym == SDLK_3)
+                app.view = WebView::details;
+            if (event.key.keysym.sym == SDLK_4)
                 app.view = WebView::split;
             if (event.key.keysym.sym == SDLK_TAB)
-                app.view = app.view == WebView::driver    ? WebView::details
+                app.view = app.view == WebView::simulator ? WebView::driver
+                           : app.view == WebView::driver  ? WebView::details
                            : app.view == WebView::details ? WebView::split
-                                                          : WebView::driver;
+                                                          : WebView::simulator;
         }
         if (event.type == SDL_MOUSEBUTTONDOWN && event.button.y < 56) {
             const float x = event.button.x;
             const float button_width = web_button_width((float)width);
             const float start = web_button_start((float)width);
-            for (int i = 0; i < 3; ++i) {
+            for (int i = 0; i < 4; ++i) {
                 const float left = start + i * (button_width + 8);
                 if (x >= left && x <= left + button_width)
-                    app.view = i == 0   ? WebView::driver
-                               : i == 1 ? WebView::details
+                    app.view = i == 0   ? WebView::simulator
+                               : i == 1 ? WebView::driver
+                               : i == 2 ? WebView::details
                                         : WebView::split;
             }
         }
@@ -213,8 +277,11 @@ static void web_frame(void *arg) {
         app.display.vg, (float)width, (float)height, (float)pw / width);
     web_navigation(app.display.vg, (float)width, app.view);
     Rect content{16, 72, (float)width - 32, (float)height - 88};
+    update_simulator_controls(app.source);
     VehicleData data = app.source.sample(emscripten_get_now() / 1000.0);
-    if (app.view == WebView::driver)
+    if (app.view == WebView::simulator)
+        draw_simulator_view(app.display.vg, content, app.source.visual_state());
+    else if (app.view == WebView::driver)
         draw_driver_display(app.display.vg, content, data);
     else if (app.view == WebView::details)
         draw_vehicle_details(app.display.vg, content, data);
@@ -250,7 +317,7 @@ static void web_frame(void *arg) {
 }
 #endif
 
-int main() {
+int main(int argc, char **argv) {
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         error("SDL_Init");
         return 1;
@@ -275,10 +342,7 @@ int main() {
         return 1;
     }
     resize_web_canvas();
-    int web_width = 0;
-    int web_height = 0;
-    SDL_GetWindowSize(app.display.window, &web_width, &web_height);
-    app.view = web_width >= 1200 ? WebView::split : WebView::driver;
+    app.view = WebView::simulator;
     emscripten_set_main_loop_arg(web_frame, &app, 0, true);
 #else
     const char *base_path = SDL_GetBasePath();
@@ -286,64 +350,90 @@ int main() {
         std::string(base_path ? base_path : "") + "assets/fonts/DejaVuSans.ttf";
     if (base_path)
         SDL_free((void *)base_path);
-    Display driver, details;
-    if (!create_display(driver,
-                        "EV Driver Display",
-                        SDL_WINDOWPOS_CENTERED,
-                        SDL_WINDOWPOS_CENTERED,
-                        1100,
-                        600,
-                        font.c_str()) ||
-        !create_display(details,
-                        "EV Vehicle Details",
-                        SDL_WINDOWPOS_CENTERED + 80,
-                        SDL_WINDOWPOS_CENTERED + 80,
-                        850,
-                        650,
-                        font.c_str())) {
+    bool interactive = false;
+    for (int i = 1; i < argc; ++i)
+        interactive =
+            interactive || std::string(argv[i]) == "--backend=simulator";
+    Display driver, details, simulator_display;
+    const bool displays_created =
+        create_display(driver,
+                       "EV Driver Display",
+                       SDL_WINDOWPOS_CENTERED,
+                       SDL_WINDOWPOS_CENTERED,
+                       1100,
+                       600,
+                       font.c_str()) &&
+        create_display(details,
+                       "EV Vehicle Details",
+                       SDL_WINDOWPOS_CENTERED + 80,
+                       SDL_WINDOWPOS_CENTERED + 80,
+                       850,
+                       650,
+                       font.c_str()) &&
+        (!interactive || create_display(simulator_display,
+                                        "EV Driving Simulator",
+                                        SDL_WINDOWPOS_CENTERED + 160,
+                                        SDL_WINDOWPOS_CENTERED + 160,
+                                        1000,
+                                        650,
+                                        font.c_str()));
+    if (!displays_created) {
+        destroy(simulator_display);
         destroy(details);
         destroy(driver);
         SDL_Quit();
         return 1;
     }
-    SimulatedVehicleDataSource source;
+    SimulatedVehicleDataSource dummy_source;
+    InteractiveVehicleSimulator simulator_source;
+    VehicleDataSource *source =
+        interactive ? static_cast<VehicleDataSource *>(&simulator_source)
+                    : static_cast<VehicleDataSource *>(&dummy_source);
     auto start = std::chrono::steady_clock::now();
     bool running = true;
-    while (running && (driver.open || details.open)) {
-        SDL_Event e;
-        while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT)
+    while (running && (driver.open || details.open || simulator_display.open)) {
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT)
                 running = false;
-            if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE)
-                running = false;
-            if (e.type == SDL_WINDOWEVENT &&
-                e.window.event == SDL_WINDOWEVENT_CLOSE) {
-                if (e.window.windowID == SDL_GetWindowID(driver.window))
+            if (event.type == SDL_KEYDOWN) {
+                if (event.key.keysym.sym == SDLK_ESCAPE)
+                    running = false;
+                if (interactive)
+                    handle_simulator_toggle(simulator_source, event.key);
+            }
+            if (event.type == SDL_WINDOWEVENT &&
+                event.window.event == SDL_WINDOWEVENT_CLOSE) {
+                if (driver.window &&
+                    event.window.windowID == SDL_GetWindowID(driver.window))
                     driver.open = false;
-                if (e.window.windowID == SDL_GetWindowID(details.window))
+                if (details.window &&
+                    event.window.windowID == SDL_GetWindowID(details.window))
                     details.open = false;
+                if (simulator_display.window &&
+                    event.window.windowID ==
+                        SDL_GetWindowID(simulator_display.window))
+                    simulator_display.open = false;
             }
         }
-        double t = std::chrono::duration<double>(
-                       std::chrono::steady_clock::now() - start)
-                       .count();
-        VehicleData data = source.sample(t);
-        int driver_width = 0, driver_height = 0, details_width = 0,
-            details_height = 0;
-        SDL_GetWindowSize(driver.window, &driver_width, &driver_height);
-        SDL_GetWindowSize(details.window, &details_width, &details_height);
+        if (interactive)
+            update_simulator_controls(simulator_source);
+        double time = std::chrono::duration<double>(
+                          std::chrono::steady_clock::now() - start)
+                          .count();
+        VehicleData data = source->sample(time);
         if (driver.open)
-            render(driver,
-                   data,
-                   {0, 0, (float)driver_width, (float)driver_height},
-                   true);
+            render(driver, data, DisplayContent::driver);
         if (details.open)
-            render(details,
+            render(details, data, DisplayContent::details);
+        if (simulator_display.open)
+            render(simulator_display,
                    data,
-                   {0, 0, (float)details_width, (float)details_height},
-                   false);
+                   DisplayContent::simulator,
+                   &simulator_source.visual_state());
         SDL_Delay(16);
     }
+    destroy(simulator_display);
     destroy(details);
     destroy(driver);
     SDL_Quit();

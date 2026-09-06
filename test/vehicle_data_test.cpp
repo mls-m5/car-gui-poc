@@ -1,3 +1,4 @@
+#include "interactive_vehicle_simulator.h"
 #include "vehicle_data.h"
 #include <cassert>
 #include <cmath>
@@ -19,4 +20,23 @@ int main() {
         assert(d.trip_distance_km >= previous_distance);
         previous_distance = d.trip_distance_km;
     }
+
+    InteractiveVehicleSimulator simulator;
+    SimulatorControls controls;
+    controls.throttle = true;
+    simulator.set_controls(controls);
+    simulator.sample(0);
+    VehicleData driven;
+    for (int i = 1; i <= 400; ++i)
+        driven = simulator.sample(i * 0.025);
+    assert(driven.speed_kph > 10);
+    assert(driven.trip_distance_km > 0);
+    assert(driven.trip_energy_used_kwh > 0);
+
+    simulator.toggle_tire_fault();
+    simulator.toggle_battery_fault();
+    VehicleData faulted = simulator.sample(10.1);
+    assert(faulted.warnings.tire_pressure);
+    assert(faulted.warnings.battery_warning);
+    assert(faulted.tire_pressure_rear_right_bar < 2.2);
 }

@@ -30,6 +30,8 @@ struct VehicleData {
            trip_energy_regenerated_kwh = 0,
            average_consumption_kwh_per_100km = 0;
 };
+// Dashboard-facing decoded telemetry boundary. A future implementation can own
+// an Ethernet transport and packet decoder while leaving all UI code unchanged.
 class VehicleDataSource {
 public:
     virtual ~VehicleDataSource() = default;
