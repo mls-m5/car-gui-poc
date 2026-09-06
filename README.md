@@ -33,8 +33,9 @@ cmake --build build
 
 Press Escape to close all windows. Closing an individual window leaves the
 others running. The default native mode uses the automatic dummy backend. The
-interactive backend opens a third window and defaults to its procedural GLES2
-3D road; the original NanoVG road remains available:
+interactive mode opens a third window. Its default is the Bullet backend with
+a procedural GLES2 3D road. The original 2D view uses a completely separate,
+lightweight vehicle model and remains available:
 
 ```sh
 ./build/car-gui --backend=simulator
@@ -51,10 +52,11 @@ Simulator controls:
 - `X` toggles the seat belt.
 
 All dashboard values arrive through the decoded `VehicleDataSource` boundary.
-The automatic and Bullet-powered interactive simulators implement it without
-exposing their model to the dashboard renderers. Acceleration, drag, braking,
-regeneration, and battery energy use are derived from the rigid body's motion
-and applied forces. A future `NetworkVehicleDataSource` can own
+The automatic, lightweight 2D, and Bullet-powered 3D simulators separately
+implement it without exposing their models to the dashboard renderers. In the
+3D backend, acceleration, drag, braking, regeneration, and battery energy use
+are derived from the rigid body's motion and applied forces. A future
+`NetworkVehicleDataSource` can own
 an Ethernet connection and unpack its telemetry protocol into `VehicleData`
 without changing any GUI code; no real network connection is used today. The
 `assets/fonts` directory contains project-owned DejaVu Sans font files and
@@ -69,10 +71,11 @@ ctest --test-dir build --output-on-failure
 ## Browser build (Emscripten)
 
 Native builds use two SDL windows. Browsers use one canvas, so the web build
-provides `3D DRIVE`, `2D DRIVE`, `DRIVER`, `DETAILS`, and `SPLIT` views in an
+provides `3D DRIVE`, `2D DRIVE`, `DRIVER`, `DETAILS`, and `ALL` views in an
 in-canvas navigation bar. The Bullet-powered 3D road is selected by default.
-Use the buttons, keys `1` through `5`, or `Tab` to switch views. The same
-driving and fault controls listed above work while the canvas has focus.
+`ALL` places the 3D road above both live dashboard panels. Use the buttons,
+keys `1` through `5`, or `Tab` to switch views. The same driving and fault
+controls listed above work while the canvas has focus.
 
 Install and activate the official Emscripten SDK separately:
 

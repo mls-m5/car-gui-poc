@@ -1,4 +1,4 @@
-#include "interactive_vehicle_simulator.h"
+#include "bullet_vehicle_simulator.h"
 
 #include <btBulletDynamicsCommon.h>
 
@@ -19,7 +19,7 @@ constexpr double drivetrain_efficiency = 0.91;
 constexpr double regeneration_efficiency = 0.68;
 } // namespace
 
-struct InteractiveVehicleSimulator::PhysicsState {
+struct BulletVehicleSimulator::PhysicsState {
     btDefaultCollisionConfiguration collision_configuration;
     btCollisionDispatcher dispatcher{&collision_configuration};
     btDbvtBroadphase broadphase;
@@ -69,45 +69,44 @@ struct InteractiveVehicleSimulator::PhysicsState {
     }
 };
 
-InteractiveVehicleSimulator::InteractiveVehicleSimulator()
+BulletVehicleSimulator::BulletVehicleSimulator()
     : physics_(std::make_unique<PhysicsState>()) {}
-InteractiveVehicleSimulator::~InteractiveVehicleSimulator() = default;
+BulletVehicleSimulator::~BulletVehicleSimulator() = default;
 
-void InteractiveVehicleSimulator::set_controls(
-    const SimulatorControls &controls) {
+void BulletVehicleSimulator::set_controls(const SimulatorControls &controls) {
     controls_ = controls;
 }
-void InteractiveVehicleSimulator::set_gear(Gear gear) {
+void BulletVehicleSimulator::set_gear(Gear gear) {
     if (std::abs(speed_mps_) < 0.6 || gear == Gear::neutral)
         gear_ = gear;
 }
-void InteractiveVehicleSimulator::toggle_headlights() {
+void BulletVehicleSimulator::toggle_headlights() {
     visual_.headlights = !visual_.headlights;
     if (!visual_.headlights)
         visual_.high_beam = false;
 }
-void InteractiveVehicleSimulator::toggle_high_beam() {
+void BulletVehicleSimulator::toggle_high_beam() {
     visual_.high_beam = !visual_.high_beam;
     if (visual_.high_beam)
         visual_.headlights = true;
 }
-void InteractiveVehicleSimulator::toggle_battery_fault() {
+void BulletVehicleSimulator::toggle_battery_fault() {
     visual_.battery_fault = !visual_.battery_fault;
 }
-void InteractiveVehicleSimulator::toggle_tire_fault() {
+void BulletVehicleSimulator::toggle_tire_fault() {
     visual_.tire_fault = !visual_.tire_fault;
 }
-void InteractiveVehicleSimulator::toggle_drivetrain_fault() {
+void BulletVehicleSimulator::toggle_drivetrain_fault() {
     visual_.drivetrain_fault = !visual_.drivetrain_fault;
 }
-void InteractiveVehicleSimulator::toggle_seat_belt() {
+void BulletVehicleSimulator::toggle_seat_belt() {
     seat_belt_fastened_ = !seat_belt_fastened_;
 }
-const SimulatorVisualState &InteractiveVehicleSimulator::visual_state() const {
+const SimulatorVisualState &BulletVehicleSimulator::visual_state() const {
     return visual_;
 }
 
-void InteractiveVehicleSimulator::advance(double dt) {
+void BulletVehicleSimulator::advance(double dt) {
     dt = std::clamp(dt, 0.0, 0.05);
     if (dt <= 0)
         return;
@@ -210,6 +209,7 @@ void InteractiveVehicleSimulator::advance(double dt) {
         std::clamp(battery_energy_kwh_, 0.0, battery_capacity_kwh);
 
     visual_.lateral_position_m = transform.getOrigin().x();
+    visual_.heading_radians = physics_->heading;
     visual_.speed_kph = speed_mps_ * 3.6;
     const double load = mechanical_drive_w / maximum_drive_power_w;
     battery_temperature_c_ +=
@@ -220,7 +220,7 @@ void InteractiveVehicleSimulator::advance(double dt) {
         ((25 + load * 48) - inverter_temperature_c_) * dt * 0.05;
 }
 
-VehicleData InteractiveVehicleSimulator::sample(double elapsed_seconds) {
+VehicleData BulletVehicleSimulator::sample(double elapsed_seconds) {
     if (previous_time_ < 0)
         previous_time_ = elapsed_seconds;
     advance(elapsed_seconds - previous_time_);

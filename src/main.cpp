@@ -1,7 +1,8 @@
+#include "bullet_vehicle_simulator.h"
 #include "dashboard.h"
-#include "interactive_vehicle_simulator.h"
 #include "simulator_3d.h"
 #include "simulator_view.h"
+#include "two_d_vehicle_simulator.h"
 #include <GLES2/gl2.h>
 #include <SDL2/SDL.h>
 #include <algorithm>
@@ -108,7 +109,7 @@ static void render(Display &display,
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
     if (content == DisplayContent::simulator_3d && visual &&
         display.renderer_3d)
-        display.renderer_3d->render(pixel_width, pixel_height, *visual);
+        display.renderer_3d->render(0, 0, pixel_width, pixel_height, *visual);
     nvgBeginFrame(
         display.vg, (float)width, (float)height, (float)pixel_width / width);
     const Rect bounds{0, 0, (float)width, (float)height};
@@ -176,11 +177,13 @@ static void handle_simulator_toggle(InteractiveVehicleSimulator &simulator,
 }
 
 #ifdef __EMSCRIPTEN__
-enum class WebView { simulator_3d, simulator_2d, driver, details, split };
+enum class WebView { simulator_3d, simulator_2d, driver, details, combined };
 struct WebApplication {
     Display display;
     WebView view = WebView::simulator_3d;
-    InteractiveVehicleSimulator source;
+    BulletVehicleSimulator simulator_3d;
+    TwoDVehicleSimulator simulator_2d;
+    InteractiveVehicleSimulator *active_source = &simulator_3d;
 };
 static WebApplication web_application;
 static void resize_web_canvas() {
@@ -219,7 +222,7 @@ static void web_navigation(NVGcontext *vg, float width, WebView view) {
     nvgTextAlign(vg, NVG_ALIGN_LEFT | NVG_ALIGN_MIDDLE);
     nvgText(vg, 20, 28, width < 700 ? "" : "EV DASHBOARD", nullptr);
     const char *wide_labels[] = {
-        "3D DRIVE", "2D DRIVE", "DRIVER", "DETAILS", "SPLIT"};
+        "3D DRIVE", "2D DRIVE", "DRIVER", "DETAILS", "ALL"};
     const char *narrow_labels[] = {"3D", "2D", "DRV", "INFO", "BOTH"};
     const float button_width = web_button_width(width);
     const float start = web_button_start(width);
@@ -229,7 +232,7 @@ static void web_navigation(NVGcontext *vg, float width, WebView view) {
                         (i == 1 && view == WebView::simulator_2d) ||
                         (i == 2 && view == WebView::driver) ||
                         (i == 3 && view == WebView::details) ||
-                        (i == 4 && view == WebView::split);
+                        (i == 4 && view == WebView::combined);
         nvgBeginPath(vg);
         nvgRoundedRect(vg, x, 11, button_width, 34, 8);
         nvgFillColor(vg, selected ? nvgRGB(35, 130, 175) : nvgRGB(25, 38, 55));
@@ -257,7 +260,7 @@ static void web_frame(void *arg) {
         if (event.type == SDL_QUIT)
             app.display.open = false;
         if (event.type == SDL_KEYDOWN) {
-            handle_simulator_toggle(app.source, event.key);
+            handle_simulator_toggle(*app.active_source, event.key);
             if (event.key.keysym.sym == SDLK_1)
                 app.view = WebView::simulator_3d;
             if (event.key.keysym.sym == SDLK_2)
@@ -267,13 +270,13 @@ static void web_frame(void *arg) {
             if (event.key.keysym.sym == SDLK_4)
                 app.view = WebView::details;
             if (event.key.keysym.sym == SDLK_5)
-                app.view = WebView::split;
+                app.view = WebView::combined;
             if (event.key.keysym.sym == SDLK_TAB)
                 app.view =
                     app.view == WebView::simulator_3d   ? WebView::simulator_2d
                     : app.view == WebView::simulator_2d ? WebView::driver
                     : app.view == WebView::driver       ? WebView::details
-                    : app.view == WebView::details      ? WebView::split
+                    : app.view == WebView::details      ? WebView::combined
                                                         : WebView::simulator_3d;
         }
         if (event.type == SDL_MOUSEBUTTONDOWN && event.button.y < 56) {
@@ -287,12 +290,16 @@ static void web_frame(void *arg) {
                                : i == 1 ? WebView::simulator_2d
                                : i == 2 ? WebView::driver
                                : i == 3 ? WebView::details
-                                        : WebView::split;
+                                        : WebView::combined;
             }
         }
     }
-    update_simulator_controls(app.source);
-    VehicleData data = app.source.sample(emscripten_get_now() / 1000.0);
+    if (app.view == WebView::simulator_3d || app.view == WebView::combined)
+        app.active_source = &app.simulator_3d;
+    else if (app.view == WebView::simulator_2d)
+        app.active_source = &app.simulator_2d;
+    update_simulator_controls(*app.active_source);
+    VehicleData data = app.active_source->sample(emscripten_get_now() / 1000.0);
     int pw = 0, ph = 0;
     SDL_GL_GetDrawableSize(app.display.window, &pw, &ph);
     if (width <= 0 || height <= 0 || pw <= 0 || ph <= 0)
@@ -301,46 +308,52 @@ static void web_frame(void *arg) {
     glViewport(0, 0, pw, ph);
     glClearColor(.04f, .06f, .1f, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-    if (app.view == WebView::simulator_3d && app.display.renderer_3d)
-        app.display.renderer_3d->render(pw, ph, app.source.visual_state());
+    Rect content{16, 72, (float)width - 32, (float)height - 88};
+    Rect scene = content;
+    if (app.view == WebView::combined)
+        scene.height = content.height * .56f;
+    if ((app.view == WebView::simulator_3d || app.view == WebView::combined) &&
+        app.display.renderer_3d) {
+        const float pixel_ratio_x = (float)pw / width;
+        const float pixel_ratio_y = (float)ph / height;
+        app.display.renderer_3d->render(
+            (int)(scene.x * pixel_ratio_x),
+            ph - (int)((scene.y + scene.height) * pixel_ratio_y),
+            (int)(scene.width * pixel_ratio_x),
+            (int)(scene.height * pixel_ratio_y),
+            app.simulator_3d.visual_state());
+        glViewport(0, 0, pw, ph);
+    }
     nvgBeginFrame(
         app.display.vg, (float)width, (float)height, (float)pw / width);
     web_navigation(app.display.vg, (float)width, app.view);
-    Rect content{16, 72, (float)width - 32, (float)height - 88};
     if (app.view == WebView::simulator_3d)
-        draw_simulator_hud(app.display.vg, content, app.source.visual_state());
+        draw_simulator_hud(
+            app.display.vg, content, app.simulator_3d.visual_state());
     else if (app.view == WebView::simulator_2d)
-        draw_simulator_view(app.display.vg, content, app.source.visual_state());
+        draw_simulator_view(
+            app.display.vg, content, app.simulator_2d.visual_state());
     else if (app.view == WebView::driver)
         draw_driver_display(app.display.vg, content, data);
     else if (app.view == WebView::details)
         draw_vehicle_details(app.display.vg, content, data);
     else {
-        float gap = 16;
-        if (content.width >= 1100) {
-            float dw = (content.width - gap) * 1100 / 1950;
-            draw_driver_display(app.display.vg,
-                                {content.x, content.y, dw, content.height},
-                                data);
-            draw_vehicle_details(app.display.vg,
-                                 {content.x + dw + gap,
-                                  content.y,
-                                  content.width - dw - gap,
-                                  content.height},
-                                 data);
-        }
-        else {
-            float dh = (content.height - gap) * .48f;
-            draw_driver_display(app.display.vg,
-                                {content.x, content.y, content.width, dh},
-                                data);
-            draw_vehicle_details(app.display.vg,
-                                 {content.x,
-                                  content.y + dh + gap,
-                                  content.width,
-                                  content.height - dh - gap},
-                                 data);
-        }
+        constexpr float gap = 12;
+        const float panels_y = scene.y + scene.height + gap;
+        const float panels_height = content.y + content.height - panels_y;
+        const float driver_width =
+            (content.width - gap) * 1100.f / (1100.f + 850.f);
+        draw_driver_display(app.display.vg,
+                            {content.x, panels_y, driver_width, panels_height},
+                            data);
+        draw_vehicle_details(app.display.vg,
+                             {content.x + driver_width + gap,
+                              panels_y,
+                              content.width - driver_width - gap,
+                              panels_height},
+                             data);
+        draw_simulator_hud(
+            app.display.vg, scene, app.simulator_3d.visual_state());
     }
     nvgEndFrame(app.display.vg);
     SDL_GL_SwapWindow(app.display.window);
@@ -422,9 +435,13 @@ int main(int argc, char **argv) {
         return 1;
     }
     SimulatedVehicleDataSource dummy_source;
-    InteractiveVehicleSimulator simulator_source;
+    BulletVehicleSimulator simulator_3d;
+    TwoDVehicleSimulator simulator_2d;
+    InteractiveVehicleSimulator *interactive_source =
+        use_2d_view ? static_cast<InteractiveVehicleSimulator *>(&simulator_2d)
+                    : static_cast<InteractiveVehicleSimulator *>(&simulator_3d);
     VehicleDataSource *source =
-        interactive ? static_cast<VehicleDataSource *>(&simulator_source)
+        interactive ? static_cast<VehicleDataSource *>(interactive_source)
                     : static_cast<VehicleDataSource *>(&dummy_source);
     auto start = std::chrono::steady_clock::now();
     bool running = true;
@@ -437,7 +454,7 @@ int main(int argc, char **argv) {
                 if (event.key.keysym.sym == SDLK_ESCAPE)
                     running = false;
                 if (interactive)
-                    handle_simulator_toggle(simulator_source, event.key);
+                    handle_simulator_toggle(*interactive_source, event.key);
             }
             if (event.type == SDL_WINDOWEVENT &&
                 event.window.event == SDL_WINDOWEVENT_CLOSE) {
@@ -454,7 +471,7 @@ int main(int argc, char **argv) {
             }
         }
         if (interactive)
-            update_simulator_controls(simulator_source);
+            update_simulator_controls(*interactive_source);
         double time = std::chrono::duration<double>(
                           std::chrono::steady_clock::now() - start)
                           .count();
@@ -468,7 +485,7 @@ int main(int argc, char **argv) {
                    data,
                    use_2d_view ? DisplayContent::simulator_2d
                                : DisplayContent::simulator_3d,
-                   &simulator_source.visual_state());
+                   &interactive_source->visual_state());
         SDL_Delay(16);
     }
     destroy(simulator_display);

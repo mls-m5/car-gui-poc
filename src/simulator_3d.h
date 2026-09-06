@@ -12,7 +12,11 @@ public:
     Simulator3DRenderer &operator=(const Simulator3DRenderer &) = delete;
 
     bool initialize();
-    void render(int width, int height, const SimulatorVisualState &state);
+    void render(int viewport_x,
+                int viewport_y,
+                int viewport_width,
+                int viewport_height,
+                const SimulatorVisualState &state);
     void shutdown();
 
 private:

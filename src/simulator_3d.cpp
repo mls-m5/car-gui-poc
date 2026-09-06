@@ -87,21 +87,33 @@ void quad(std::vector<Vertex> &v,
     triangle(v, a, b, c, color);
     triangle(v, a, c, d, color);
 }
-void box(std::vector<Vertex> &v,
-         Vec3 center,
-         Vec3 size,
-         std::array<float, 3> color) {
+void oriented_box(std::vector<Vertex> &v,
+                  Vec3 center,
+                  Vec3 size,
+                  float yaw,
+                  std::array<float, 3> color) {
     Vec3 p[8];
-    for (int i = 0; i < 8; ++i)
-        p[i] = {center.x + ((i & 1) ? .5f : -.5f) * size.x,
+    const float sine = std::sin(yaw);
+    const float cosine = std::cos(yaw);
+    for (int i = 0; i < 8; ++i) {
+        const float local_x = ((i & 1) ? .5f : -.5f) * size.x;
+        const float local_z = ((i & 4) ? .5f : -.5f) * size.z;
+        p[i] = {center.x + cosine * local_x + sine * local_z,
                 center.y + ((i & 2) ? .5f : -.5f) * size.y,
-                center.z + ((i & 4) ? .5f : -.5f) * size.z};
+                center.z - sine * local_x + cosine * local_z};
+    }
     quad(v, p[0], p[4], p[6], p[2], color);
     quad(v, p[1], p[3], p[7], p[5], color);
     quad(v, p[2], p[6], p[7], p[3], color);
     quad(v, p[0], p[1], p[5], p[4], color);
     quad(v, p[4], p[5], p[7], p[6], color);
     quad(v, p[0], p[2], p[3], p[1], color);
+}
+void box(std::vector<Vertex> &v,
+         Vec3 center,
+         Vec3 size,
+         std::array<float, 3> color) {
+    oriented_box(v, center, size, 0, color);
 }
 void pine(std::vector<Vertex> &v, float x, float z, float scale, bool night) {
     box(v,
@@ -183,17 +195,23 @@ void Simulator3DRenderer::shutdown() {
     vertex_buffer_ = 0;
     program_ = 0;
 }
-void Simulator3DRenderer::render(int width,
-                                 int height,
+void Simulator3DRenderer::render(int viewport_x,
+                                 int viewport_y,
+                                 int viewport_width,
+                                 int viewport_height,
                                  const SimulatorVisualState &s) {
-    if (!program_ || width <= 0 || height <= 0)
+    if (!program_ || viewport_width <= 0 || viewport_height <= 0)
         return;
     bool night = std::fmod(s.distance_m, 1400.0) > 950;
     if (night)
         glClearColor(0.025f, 0.055f, 0.12f, 1.f);
     else
         glClearColor(0.34f, 0.68f, 0.87f, 1.f);
+    glViewport(viewport_x, viewport_y, viewport_width, viewport_height);
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(viewport_x, viewport_y, viewport_width, viewport_height);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glDisable(GL_SCISSOR_TEST);
     std::vector<Vertex> vertices;
     vertices.reserve(3000);
     quad(vertices,
@@ -257,35 +275,66 @@ void Simulator3DRenderer::render(int width,
                        : std::array<float, 3>{.22f, .3f, .32f});
     }
     float car_x = std::clamp((float)s.lateral_position_m, -7.f, 7.f);
-    box(vertices, {car_x, .48f, 2}, {1.9f, .65f, 4.2f}, {.04f, .45f, .75f});
-    box(vertices,
-        {car_x, .93f, 2.15f},
-        {1.45f, .42f, 2.1f},
-        {.04f, .12f, .18f});
-    box(vertices,
-        {car_x - .58f, .54f, -.13f},
-        {.38f, .18f, .06f},
-        {.95f, .05f, .04f});
-    box(vertices,
-        {car_x + .58f, .54f, -.13f},
-        {.38f, .18f, .06f},
-        {.95f, .05f, .04f});
+    const float car_yaw = (float)s.heading_radians;
+    const float yaw_sine = std::sin(car_yaw);
+    const float yaw_cosine = std::cos(car_yaw);
+    const auto car_point = [&](float local_x, float y, float local_z) {
+        return Vec3{car_x + yaw_cosine * local_x + yaw_sine * local_z,
+                    y,
+                    2 - yaw_sine * local_x + yaw_cosine * local_z};
+    };
+    oriented_box(vertices,
+                 {car_x, .48f, 2},
+                 {1.9f, .65f, 4.2f},
+                 car_yaw,
+                 {.04f, .45f, .75f});
+    oriented_box(vertices,
+                 car_point(0, .93f, .15f),
+                 {1.45f, .42f, 2.1f},
+                 car_yaw,
+                 {.04f, .12f, .18f});
+    oriented_box(vertices,
+                 car_point(-.58f, .54f, -2.13f),
+                 {.38f, .18f, .06f},
+                 car_yaw,
+                 {.95f, .05f, .04f});
+    oriented_box(vertices,
+                 car_point(.58f, .54f, -2.13f),
+                 {.38f, .18f, .06f},
+                 car_yaw,
+                 {.95f, .05f, .04f});
+    const std::array<float, 3> tire_color{.025f, .03f, .035f};
+    for (float side : {-1.f, 1.f}) {
+        oriented_box(vertices,
+                     car_point(side * 1.02f, .36f, -1.25f),
+                     {.34f, .55f, .78f},
+                     car_yaw,
+                     tire_color);
+        oriented_box(vertices,
+                     car_point(side * 1.02f, .36f, 1.25f),
+                     {.34f, .55f, .78f},
+                     car_yaw + (float)s.steering * .48f,
+                     tire_color);
+    }
     if (s.headlights && night) {
         auto light = s.high_beam ? std::array<float, 3>{.65f, .62f, .35f}
                                  : std::array<float, 3>{.38f, .37f, .22f};
+        const float reach = s.high_beam ? 43.f : 23.f;
         triangle(vertices,
-                 {car_x - .65f, .05f, 4},
-                 {car_x - 4, .05f, s.high_beam ? 45.f : 25.f},
-                 {car_x, .05f, s.high_beam ? 45.f : 25.f},
+                 car_point(-.65f, .05f, 2.05f),
+                 car_point(-4, .05f, reach),
+                 car_point(0, .05f, reach),
                  light);
         triangle(vertices,
-                 {car_x + .65f, .05f, 4},
-                 {car_x, .05f, s.high_beam ? 45.f : 25.f},
-                 {car_x + 4, .05f, s.high_beam ? 45.f : 25.f},
+                 car_point(.65f, .05f, 2.05f),
+                 car_point(0, .05f, reach),
+                 car_point(4, .05f, reach),
                  light);
     }
-    Mat4 projection = perspective(
-             60.f * 3.14159265f / 180.f, (float)width / height, .1f, 350.f),
+    Mat4 projection = perspective(60.f * 3.14159265f / 180.f,
+                                  (float)viewport_width / viewport_height,
+                                  .1f,
+                                  350.f),
          view = look_at({0, 4.2f, -9}, {car_x * .18f, .6f, 16}, {0, 1, 0}),
          vp = multiply(projection, view);
     glEnable(GL_DEPTH_TEST);
