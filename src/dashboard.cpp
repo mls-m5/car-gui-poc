@@ -379,7 +379,7 @@ void draw_modern_driver_display(NVGcontext *v,
                    575,
                    225,
                    (float)std::abs(displayed_power_kw) /
-                       std::max(1.f, power_limit),
+                       (std::max(1.f, power_limit) * 4.f),
                    regenerating ? nvgRGB(56, 239, 125) : nvgRGB(0, 242, 254),
                    power,
                    regenerating ? "KW CHARGE" : "KW OUTPUT",
