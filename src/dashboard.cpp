@@ -220,25 +220,56 @@ void warning_symbol(NVGcontext *v,
     }
     nvgRestore(v);
 }
+void compact_turn_signal(
+    NVGcontext *v, float x, float y, bool points_left, bool active) {
+    const float direction = points_left ? -1.f : 1.f;
+    const NVGcolor color = active ? green : nvgRGB(42, 50, 61);
+    auto path = [&] {
+        nvgBeginPath(v);
+        nvgMoveTo(v, x + direction * 14, y - 4);
+        nvgLineTo(v, x, y - 4);
+        nvgLineTo(v, x, y - 11);
+        nvgLineTo(v, x - direction * 15, y);
+        nvgLineTo(v, x, y + 11);
+        nvgLineTo(v, x, y + 4);
+        nvgLineTo(v, x + direction * 14, y + 4);
+        nvgClosePath(v);
+    };
+    if (active) {
+        path();
+        nvgStrokeColor(v, nvgRGBA(16, 185, 129, 55));
+        nvgStrokeWidth(v, 9);
+        nvgStroke(v);
+    }
+    path();
+    nvgFillColor(v, color);
+    nvgFill(v);
+}
 void compact_headlight(
     NVGcontext *v, float x, float y, bool active, bool high_beam) {
     const NVGcolor color = active ? (high_beam ? nvgRGB(59, 130, 246) : green)
                                   : nvgRGB(42, 50, 61);
-    nvgSave(v);
-    nvgStrokeColor(v, color);
-    nvgStrokeWidth(v, active ? 2.6f : 2.f);
-    nvgLineCap(v, NVG_ROUND);
-    nvgBeginPath(v);
-    nvgMoveTo(v, x - 12, y - 10);
-    nvgBezierTo(v, x - 2, y - 7, x - 2, y + 7, x - 12, y + 10);
-    nvgClosePath(v);
-    nvgStroke(v);
-    for (int i = -1; i <= 1; ++i) {
+    auto paths = [&](NVGcolor stroke_color, float stroke_width) {
+        nvgStrokeColor(v, stroke_color);
+        nvgStrokeWidth(v, stroke_width);
         nvgBeginPath(v);
-        nvgMoveTo(v, x + 1, y + i * 7);
-        nvgLineTo(v, x + 14, y + i * 7 + (high_beam ? 0 : 3));
+        nvgMoveTo(v, x - 12, y - 10);
+        nvgBezierTo(v, x - 2, y - 7, x - 2, y + 7, x - 12, y + 10);
+        nvgClosePath(v);
         nvgStroke(v);
-    }
+        for (int i = -1; i <= 1; ++i) {
+            nvgBeginPath(v);
+            nvgMoveTo(v, x + 1, y + i * 7);
+            nvgLineTo(v, x + 14, y + i * 7 + (high_beam ? 0 : 3));
+            nvgStroke(v);
+        }
+    };
+    nvgSave(v);
+    nvgLineCap(v, NVG_ROUND);
+    if (active)
+        paths(high_beam ? nvgRGBA(59, 130, 246, 45) : nvgRGBA(16, 185, 129, 45),
+              9);
+    paths(color, active ? 2.6f : 2.f);
     nvgRestore(v);
 }
 void compact_warning(NVGcontext *v, float x, float y, bool active, bool tire) {
@@ -262,7 +293,17 @@ void compact_warning(NVGcontext *v, float x, float y, bool active, bool tire) {
         nvgLineTo(v, x + 14, y + 12);
         nvgClosePath(v);
     }
-    nvgStroke(v);
+    if (active) {
+        nvgStrokeColor(
+            v, tire ? nvgRGBA(245, 158, 11, 48) : nvgRGBA(239, 68, 68, 52));
+        nvgStrokeWidth(v, 9);
+        nvgStroke(v);
+        nvgStrokeColor(v, color);
+        nvgStrokeWidth(v, 2.3f);
+        nvgStroke(v);
+    }
+    else
+        nvgStroke(v);
     txt(v, "!", x, y + 3, 15, color, NVG_ALIGN_CENTER);
     nvgRestore(v);
 }
@@ -342,7 +383,7 @@ void draw_modern_driver_display(NVGcontext *v,
     nvgStrokeWidth(v, 1);
     nvgStroke(v);
 
-    turn_signal(v, 260, 58, false, d.warnings.left_indicator);
+    compact_turn_signal(v, 260, 58, false, d.warnings.left_indicator);
     compact_headlight(
         v, 316, 58, d.warnings.headlights && !d.warnings.high_beam, false);
     compact_headlight(v, 372, 58, d.warnings.high_beam, true);
@@ -352,7 +393,7 @@ void draw_modern_driver_display(NVGcontext *v,
                     58,
                     d.warnings.general_warning || d.warnings.battery_warning,
                     false);
-    turn_signal(v, 540, 58, true, d.warnings.right_indicator);
+    compact_turn_signal(v, 540, 58, true, d.warnings.right_indicator);
     nvgBeginPath(v);
     nvgMoveTo(v, 55, 92);
     nvgLineTo(v, 745, 92);
