@@ -41,31 +41,78 @@ void vertex(std::vector<GlowVertex> &vertices,
                         color[2] * alpha,
                         alpha});
 }
-void disc(std::vector<GlowVertex> &vertices,
-          const ScreenTransform &transform,
-          float x,
-          float y,
-          float radius,
-          std::array<float, 3> color,
-          float alpha) {
-    constexpr int segments = 20;
-    for (int i = 0; i < segments; ++i) {
-        const float a0 = i * 2.f * pi / segments;
-        const float a1 = (i + 1) * 2.f * pi / segments;
-        vertex(vertices, transform, x, y, color, alpha);
-        vertex(vertices,
-               transform,
-               x + std::cos(a0) * radius,
-               y + std::sin(a0) * radius,
-               color,
-               alpha);
-        vertex(vertices,
-               transform,
-               x + std::cos(a1) * radius,
-               y + std::sin(a1) * radius,
-               color,
-               alpha);
-    }
+void filled_triangle(std::vector<GlowVertex> &vertices,
+                     const ScreenTransform &transform,
+                     std::array<float, 2> a,
+                     std::array<float, 2> b,
+                     std::array<float, 2> c,
+                     std::array<float, 3> color,
+                     float alpha) {
+    vertex(vertices, transform, a[0], a[1], color, alpha);
+    vertex(vertices, transform, b[0], b[1], color, alpha);
+    vertex(vertices, transform, c[0], c[1], color, alpha);
+}
+void filled_quad(std::vector<GlowVertex> &vertices,
+                 const ScreenTransform &transform,
+                 std::array<float, 2> a,
+                 std::array<float, 2> b,
+                 std::array<float, 2> c,
+                 std::array<float, 2> d,
+                 std::array<float, 3> color,
+                 float alpha) {
+    filled_triangle(vertices, transform, a, b, c, color, alpha);
+    filled_triangle(vertices, transform, a, c, d, color, alpha);
+}
+void line_segment(std::vector<GlowVertex> &vertices,
+                  const ScreenTransform &transform,
+                  float x0,
+                  float y0,
+                  float x1,
+                  float y1,
+                  float width,
+                  std::array<float, 3> color,
+                  float alpha) {
+    const float dx = x1 - x0, dy = y1 - y0;
+    const float length = std::max(.001f, std::sqrt(dx * dx + dy * dy));
+    const float nx = -dy / length * width * .5f;
+    const float ny = dx / length * width * .5f;
+    filled_quad(vertices,
+                transform,
+                {x0 + nx, y0 + ny},
+                {x1 + nx, y1 + ny},
+                {x1 - nx, y1 - ny},
+                {x0 - nx, y0 - ny},
+                color,
+                alpha);
+}
+template <std::size_t N>
+void line_strip(std::vector<GlowVertex> &vertices,
+                const ScreenTransform &transform,
+                const std::array<std::array<float, 2>, N> &points,
+                float width,
+                std::array<float, 3> color,
+                float alpha,
+                bool closed = false) {
+    for (std::size_t i = 1; i < points.size(); ++i)
+        line_segment(vertices,
+                     transform,
+                     points[i - 1][0],
+                     points[i - 1][1],
+                     points[i][0],
+                     points[i][1],
+                     width,
+                     color,
+                     alpha);
+    if (closed)
+        line_segment(vertices,
+                     transform,
+                     points.back()[0],
+                     points.back()[1],
+                     points.front()[0],
+                     points.front()[1],
+                     width,
+                     color,
+                     alpha);
 }
 void arc(std::vector<GlowVertex> &vertices,
          const ScreenTransform &transform,
@@ -104,6 +151,108 @@ void arc(std::vector<GlowVertex> &vertices,
         vertex(vertices, transform, x1o, y1o, color, alpha);
         vertex(vertices, transform, x1i, y1i, color, alpha);
     }
+}
+void indicator_mask(std::vector<GlowVertex> &vertices,
+                    const ScreenTransform &transform,
+                    int icon,
+                    float x,
+                    float y,
+                    std::array<float, 3> color,
+                    float alpha) {
+    if (icon == 0 || icon == 7) {
+        const float mirror = icon == 0 ? 1.f : -1.f;
+        filled_triangle(vertices,
+                        transform,
+                        {x - mirror * 15, y},
+                        {x - mirror * 1, y - 11},
+                        {x - mirror * 1, y + 11},
+                        color,
+                        alpha);
+        filled_quad(vertices,
+                    transform,
+                    {x - mirror * 2, y - 4},
+                    {x + mirror * 14, y - 4},
+                    {x + mirror * 14, y + 4},
+                    {x - mirror * 2, y + 4},
+                    color,
+                    alpha);
+        return;
+    }
+    if (icon == 1 || icon == 2) {
+        const std::array<std::array<float, 2>, 7> lamp = {{{x - 12, y - 10},
+                                                           {x - 7, y - 9},
+                                                           {x - 3, y - 5},
+                                                           {x - 2, y},
+                                                           {x - 3, y + 5},
+                                                           {x - 7, y + 9},
+                                                           {x - 12, y + 10}}};
+        line_strip(vertices, transform, lamp, 2.6f, color, alpha);
+        for (int line = -1; line <= 1; ++line)
+            line_segment(vertices,
+                         transform,
+                         x + 1,
+                         y + line * 7,
+                         x + 14,
+                         y + line * 7 + (icon == 1 ? 3 : 0),
+                         2.6f,
+                         color,
+                         alpha);
+        return;
+    }
+    if (icon == 3) {
+        line_segment(vertices,
+                     transform,
+                     x - 12,
+                     y + 12,
+                     x - 7,
+                     y - 12,
+                     2.6f,
+                     color,
+                     alpha);
+        line_segment(vertices,
+                     transform,
+                     x + 12,
+                     y + 12,
+                     x + 7,
+                     y - 12,
+                     2.6f,
+                     color,
+                     alpha);
+        line_segment(
+            vertices, transform, x, y + 9, x, y - 8, 2.6f, color, alpha);
+        line_segment(
+            vertices, transform, x - 4, y - 3, x, y - 8, 2.6f, color, alpha);
+        line_segment(
+            vertices, transform, x, y - 8, x + 4, y - 3, 2.6f, color, alpha);
+        return;
+    }
+    if (icon == 4) {
+        arc(vertices, transform, x, y + 1, 12, 2.8f, .62f, true, color, alpha);
+        line_segment(
+            vertices, transform, x, y + 1, x + 7, y - 5, 2.8f, color, alpha);
+        return;
+    }
+    if (icon == 5) {
+        const std::array<std::array<float, 2>, 8> tire = {{{x - 12, y - 10},
+                                                           {x - 15, y},
+                                                           {x - 10, y + 10},
+                                                           {x - 5, y + 12},
+                                                           {x + 5, y + 12},
+                                                           {x + 10, y + 10},
+                                                           {x + 15, y},
+                                                           {x + 12, y - 10}}};
+        line_strip(vertices, transform, tire, 2.8f, color, alpha);
+        line_segment(
+            vertices, transform, x, y - 5, x, y + 4, 2.8f, color, alpha);
+        line_segment(
+            vertices, transform, x, y + 8, x, y + 10, 2.8f, color, alpha);
+        return;
+    }
+    const std::array<std::array<float, 2>, 3> warning = {
+        {{x, y - 13}, {x - 14, y + 12}, {x + 14, y + 12}}};
+    line_strip(vertices, transform, warning, 2.8f, color, alpha, true);
+    line_segment(vertices, transform, x, y - 5, x, y + 4, 2.8f, color, alpha);
+    line_segment(vertices, transform, x, y + 8, x, y + 10, 2.8f, color, alpha);
 }
 GLuint compile_shader(GLenum type, const char *source) {
     const GLuint shader = glCreateShader(type);
@@ -265,13 +414,13 @@ void DashboardGlowRenderer::render(int pixel_width,
     for (int i = 0; i < 8; ++i) {
         const float intensity = animation.indicator_intensity[i];
         if (intensity > .001f)
-            disc(vertices,
-                 transform,
-                 icon_x[i],
-                 58,
-                 10,
-                 colors[i],
-                 intensity * .65f);
+            indicator_mask(vertices,
+                           transform,
+                           i,
+                           icon_x[i],
+                           58,
+                           colors[i],
+                           intensity * .75f);
     }
     arc(vertices,
         transform,
