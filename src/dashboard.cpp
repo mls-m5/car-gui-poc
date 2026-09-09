@@ -383,7 +383,7 @@ void draw_modern_driver_display(NVGcontext *v,
                    regenerating ? nvgRGB(56, 239, 125) : nvgRGB(0, 242, 254),
                    power,
                    regenerating ? "KW CHARGE" : "KW OUTPUT",
-                   true);
+                   !regenerating);
     txt(v, gear_name(d.gear), 400, 225, 26, cyan, NVG_ALIGN_CENTER);
 
     nvgTextLetterSpacing(v, 1.f);
