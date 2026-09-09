@@ -182,7 +182,7 @@ static void handle_simulator_toggle(InteractiveVehicleSimulator &simulator,
 enum class WebView { simulator_3d, driver, details, combined };
 struct WebApplication {
     Display display;
-    WebView view = WebView::simulator_3d;
+    WebView view = WebView::combined;
     BulletVehicleSimulator simulator_3d;
     InteractiveVehicleSimulator *active_source = &simulator_3d;
     DriverDashboardStyle dashboard_style = DriverDashboardStyle::modern_rings;
@@ -388,7 +388,7 @@ int main(int argc, char **argv) {
         return 1;
     }
     resize_web_canvas();
-    app.view = WebView::simulator_3d;
+    app.view = WebView::combined;
     emscripten_set_main_loop_arg(web_frame, &app, 0, true);
 #else
     const char *base_path = SDL_GetBasePath();

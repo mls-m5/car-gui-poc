@@ -81,8 +81,8 @@ ctest --test-dir build --output-on-failure
 
 Native builds use two SDL windows. Browsers use one canvas, so the web build
 provides `3D DRIVE`, `DRIVER`, `DETAILS`, and `ALL` views in an in-canvas
-navigation bar. The Bullet-powered 3D road is selected by default. `ALL`
-places the 3D road above both live dashboard panels. The lightweight 2D road
+navigation bar. `ALL` is selected by default and places the Bullet-powered 3D
+road above both live dashboard panels. The lightweight 2D road
 is native-only (`--view=2d`). Use the buttons, keys `1` through `4`, or `Tab`
 to switch browser views. Press `V` to switch between the modern ring dashboard
 and the preserved legacy dashboard. The same driving and fault controls listed
