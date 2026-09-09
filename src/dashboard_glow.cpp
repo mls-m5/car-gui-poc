@@ -341,8 +341,8 @@ bool DashboardGlowRenderer::initialize() {
 }
 
 bool DashboardGlowRenderer::resize(int width, int height) {
-    width = std::max(1, width / 2);
-    height = std::max(1, height / 2);
+    width = std::max(1, width);
+    height = std::max(1, height);
     if (width == texture_width_ && height == texture_height_)
         return true;
     texture_width_ = width;
@@ -503,11 +503,11 @@ void DashboardGlowRenderer::render(int pixel_width,
     glActiveTexture(GL_TEXTURE0);
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffers_[1]);
     glBindTexture(GL_TEXTURE_2D, textures_[0]);
-    glUniform2f(blur_direction_uniform_, 1.f / texture_width_, 0);
+    glUniform2f(blur_direction_uniform_, 2.f / texture_width_, 0);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffers_[0]);
     glBindTexture(GL_TEXTURE_2D, textures_[1]);
-    glUniform2f(blur_direction_uniform_, 0, 1.f / texture_height_);
+    glUniform2f(blur_direction_uniform_, 0, 2.f / texture_height_);
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
