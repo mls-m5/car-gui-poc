@@ -21,6 +21,7 @@ add_executable(car-gui
     src/main.cpp
     src/nanovg_gles2.cpp
     src/dashboard.cpp
+    src/dashboard_glow.cpp
     src/simulated_vehicle_data.cpp
     src/bullet_vehicle_simulator.cpp
     src/two_d_vehicle_simulator.cpp

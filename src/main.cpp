@@ -1,5 +1,6 @@
 #include "bullet_vehicle_simulator.h"
 #include "dashboard.h"
+#include "dashboard_glow.h"
 #include "simulator_3d.h"
 #include "simulator_view.h"
 #include "two_d_vehicle_simulator.h"
@@ -20,6 +21,7 @@ struct Display {
     SDL_GLContext context = nullptr;
     NVGcontext *vg = nullptr;
     std::unique_ptr<Simulator3DRenderer> renderer_3d;
+    std::unique_ptr<DashboardGlowRenderer> glow_renderer;
     DriverDashboardAnimation dashboard_animation;
     bool open = false;
 };
@@ -64,6 +66,11 @@ static bool create_display(Display &display,
         std::cerr << "Could not load font: " << font_path << '\n';
         return false;
     }
+    display.glow_renderer = std::make_unique<DashboardGlowRenderer>();
+    if (!display.glow_renderer->initialize()) {
+        std::cerr << "Could not initialize dashboard glow renderer\n";
+        return false;
+    }
     display.open = true;
     return true;
 }
@@ -76,6 +83,10 @@ static bool initialize_3d(Display &display) {
 }
 
 static void destroy(Display &display) {
+    if (display.glow_renderer) {
+        SDL_GL_MakeCurrent(display.window, display.context);
+        display.glow_renderer.reset();
+    }
     if (display.renderer_3d) {
         SDL_GL_MakeCurrent(display.window, display.context);
         display.renderer_3d.reset();
@@ -113,9 +124,9 @@ static void render(
     if (content == DisplayContent::simulator_3d && visual &&
         display.renderer_3d)
         display.renderer_3d->render(0, 0, pixel_width, pixel_height, *visual);
+    const Rect bounds{0, 0, (float)width, (float)height};
     nvgBeginFrame(
         display.vg, (float)width, (float)height, (float)pixel_width / width);
-    const Rect bounds{0, 0, (float)width, (float)height};
     if (content == DisplayContent::driver)
         draw_driver_display(display.vg,
                             bounds,
@@ -129,6 +140,15 @@ static void render(
     if (content == DisplayContent::simulator_3d && visual)
         draw_simulator_hud(display.vg, bounds, *visual);
     nvgEndFrame(display.vg);
+    if (content == DisplayContent::driver && display.glow_renderer)
+        display.glow_renderer->render(pixel_width,
+                                      pixel_height,
+                                      (float)width,
+                                      (float)height,
+                                      bounds,
+                                      data,
+                                      dashboard_style,
+                                      display.dashboard_animation);
     SDL_GL_SwapWindow(display.window);
 }
 
@@ -367,6 +387,35 @@ static void web_frame(void *arg) {
             app.display.vg, scene, app.simulator_3d.visual_state());
     }
     nvgEndFrame(app.display.vg);
+    if (app.display.glow_renderer && app.view == WebView::driver)
+        app.display.glow_renderer->render(pw,
+                                          ph,
+                                          (float)width,
+                                          (float)height,
+                                          content,
+                                          data,
+                                          app.dashboard_style,
+                                          app.display.dashboard_animation);
+    if (app.display.glow_renderer && app.view == WebView::combined) {
+        constexpr float glow_gap = 12;
+        const float panels_y = scene.y + scene.height + glow_gap;
+        const float panels_height = content.y + content.height - panels_y;
+        const float dashboard_virtual_width =
+            app.dashboard_style == DriverDashboardStyle::modern_rings ? 800.f
+                                                                      : 1100.f;
+        const float driver_width = (content.width - glow_gap) *
+                                   dashboard_virtual_width /
+                                   (dashboard_virtual_width + 850.f);
+        app.display.glow_renderer->render(
+            pw,
+            ph,
+            (float)width,
+            (float)height,
+            {content.x, panels_y, driver_width, panels_height},
+            data,
+            app.dashboard_style,
+            app.display.dashboard_animation);
+    }
     SDL_GL_SwapWindow(app.display.window);
 }
 #endif

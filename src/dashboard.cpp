@@ -242,13 +242,6 @@ void compact_turn_signal(
         nvgLineTo(v, x + direction * 14, y + 4);
         nvgClosePath(v);
     };
-    if (intensity > .001f) {
-        path();
-        nvgStrokeColor(v,
-                       nvgRGBA(16, 185, 129, (unsigned char)(55 * intensity)));
-        nvgStrokeWidth(v, 9);
-        nvgStroke(v);
-    }
     path();
     nvgFillColor(v, color);
     nvgFill(v);
@@ -275,11 +268,6 @@ void compact_headlight(
     };
     nvgSave(v);
     nvgLineCap(v, NVG_ROUND);
-    if (intensity > .001f)
-        paths(high_beam
-                  ? nvgRGBA(59, 130, 246, (unsigned char)(45 * intensity))
-                  : nvgRGBA(16, 185, 129, (unsigned char)(45 * intensity)),
-              9);
     paths(color, 2.f + .6f * intensity);
     nvgRestore(v);
 }
@@ -306,19 +294,7 @@ void compact_warning(
         nvgLineTo(v, x + 14, y + 12);
         nvgClosePath(v);
     }
-    if (intensity > .001f) {
-        nvgStrokeColor(
-            v,
-            tire ? nvgRGBA(245, 158, 11, (unsigned char)(48 * intensity))
-                 : nvgRGBA(239, 68, 68, (unsigned char)(52 * intensity)));
-        nvgStrokeWidth(v, 9);
-        nvgStroke(v);
-        nvgStrokeColor(v, color);
-        nvgStrokeWidth(v, 2.3f);
-        nvgStroke(v);
-    }
-    else
-        nvgStroke(v);
+    nvgStroke(v);
     txt(v, "!", x, y + 3, 15, color, NVG_ALIGN_CENTER);
     nvgRestore(v);
 }
@@ -343,12 +319,6 @@ void circular_gauge(NVGcontext *v,
         const float arc_end =
             -pi / 2 + (clockwise ? 1.f : -1.f) * percentage * 2 * pi;
         const int direction = clockwise ? NVG_CW : NVG_CCW;
-        nvgBeginPath(v);
-        nvgArc(v, x, y, 90, -pi / 2, arc_end, direction);
-        nvgStrokeWidth(v, 16);
-        nvgStrokeColor(
-            v, nvgRGBA(color.r * 255, color.g * 255, color.b * 255, 32));
-        nvgStroke(v);
         nvgBeginPath(v);
         nvgArc(v, x, y, 90, -pi / 2, arc_end, direction);
         nvgStrokeWidth(v, 8);
