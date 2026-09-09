@@ -104,9 +104,19 @@ int main() {
         assistance_data = assisted_simulator.sample(i * .025);
     assert(std::abs(assistance_data.speed_kph -
                     assistance_data.cruise_control_target_kph) < 8);
+    const double speed_before_cruise_braking = assistance_data.speed_kph;
+    for (int i = 0; i < 10; ++i)
+        assisted_simulator.decrease_cruise_speed();
+    bool cruise_regenerated = false;
+    for (int i = 325; i <= 404; ++i) {
+        assistance_data = assisted_simulator.sample(i * .025);
+        cruise_regenerated = cruise_regenerated || assistance_data.power_kw < 0;
+    }
+    assert(cruise_regenerated);
+    assert(assistance_data.speed_kph < speed_before_cruise_braking);
     assisted_controls.brake = true;
     assisted_simulator.set_controls(assisted_controls);
-    assistance_data = assisted_simulator.sample(8.125);
+    assistance_data = assisted_simulator.sample(10.125);
     assert(!assistance_data.warnings.cruise_control);
     assert(assistance_data.cruise_control_target_kph > 0);
 

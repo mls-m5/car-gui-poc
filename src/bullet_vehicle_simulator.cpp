@@ -227,35 +227,40 @@ void BulletVehicleSimulator::advance(double dt) {
     const btVector3 old_velocity = body.getLinearVelocity();
     const double old_speed = std::hypot(old_velocity.x(), old_velocity.z());
     const double driver_throttle = controls_.throttle ? 1.0 : 0.0;
-    const double brake_target =
+    const double manual_brake_target =
         controls_.brake || controls_.emergency_brake ? 1.0 : 0.0;
-    if (brake_target > 0) {
+    if (manual_brake_target > 0) {
         cruise_control_active_ = false;
         cruise_integral_ = 0;
     }
-    const double brake_response = controls_.emergency_brake ? 10.0 : 2.5;
-    brake_application_ += (brake_target - brake_application_) *
-                          std::min(1.0, dt * brake_response);
     const bool can_drive = gear_ == Gear::drive || gear_ == Gear::reverse;
     const double direction = gear_ == Gear::reverse ? -1.0 : 1.0;
-    double cruise_throttle = 0;
-    if (cruise_control_active_ && gear_ == Gear::drive && brake_target == 0) {
+    double cruise_command = 0;
+    if (cruise_control_active_ && gear_ == Gear::drive &&
+        manual_brake_target == 0) {
         const double error = cruise_target_kph_ - old_speed * 3.6;
         cruise_integral_ =
             std::clamp(cruise_integral_ + error * dt, -20.0, 20.0);
         const double derivative = (error - previous_cruise_error_) / dt;
         const double derivative_term =
             std::clamp(derivative * 0.004, -0.2, 0.2);
-        cruise_throttle = std::clamp(error * 0.06 + cruise_integral_ * 0.012 +
-                                         derivative_term,
-                                     0.0,
-                                     1.0);
+        cruise_command = std::clamp(error * 0.06 + cruise_integral_ * 0.012 +
+                                        derivative_term,
+                                    -1.0,
+                                    1.0);
         previous_cruise_error_ = error;
     }
     else if (!cruise_control_active_) {
         cruise_integral_ = 0;
         previous_cruise_error_ = 0;
     }
+    const double cruise_throttle = std::max(0.0, cruise_command);
+    const double cruise_brake =
+        driver_throttle > 0 ? 0.0 : std::max(0.0, -cruise_command);
+    const double brake_target = std::max(manual_brake_target, cruise_brake);
+    const double brake_response = controls_.emergency_brake ? 10.0 : 2.5;
+    brake_application_ += (brake_target - brake_application_) *
+                          std::min(1.0, dt * brake_response);
     const double throttle = std::max(driver_throttle, cruise_throttle);
     const double power_limit = visual_.drivetrain_fault || visual_.battery_fault
                                    ? maximum_drive_power_w * 0.25
@@ -267,7 +272,7 @@ void BulletVehicleSimulator::advance(double dt) {
             : 0;
 
     // Driver steering overrides assistance. Otherwise lane assist aims at a
-    // point 50 metres ahead on the road centerline.
+    // point 50 metres ahead in the right-hand lane.
     const double driver_steering = (controls_.steer_left ? 1.0 : 0.0) -
                                    (controls_.steer_right ? 1.0 : 0.0);
     double steer_target = driver_steering;

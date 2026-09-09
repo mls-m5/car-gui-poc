@@ -60,8 +60,9 @@ Simulator controls:
 - `K` toggles lane assist. It steers toward a point 50 metres ahead in the
   right-hand lane unless the driver is steering manually.
 - `+`/`=` sets or increases cruise speed; `-` sets or decreases it.
-- `C` pauses or resumes cruise control. Braking pauses cruise while preserving
-  its displayed target; the accelerator can temporarily demand more power.
+- `C` pauses or resumes cruise control. Cruise uses regenerative braking when
+  speed exceeds its target. Manual braking pauses cruise while preserving its
+  displayed target; the accelerator can temporarily demand more power.
 
 All dashboard values arrive through the decoded `VehicleDataSource` boundary.
 The automatic data source and Bullet-powered simulator implement it without
