@@ -188,6 +188,32 @@ void BulletVehicleSimulator::toggle_drivetrain_fault() {
 void BulletVehicleSimulator::toggle_seat_belt() {
     seat_belt_fastened_ = !seat_belt_fastened_;
 }
+void BulletVehicleSimulator::toggle_lane_assist() {
+    lane_assist_enabled_ = !lane_assist_enabled_;
+}
+void BulletVehicleSimulator::increase_cruise_speed() {
+    if (cruise_target_kph_ < 0) {
+        cruise_target_kph_ = visual_.speed_kph;
+        cruise_control_active_ = true;
+    }
+    else
+        cruise_target_kph_ = std::min(220.0, cruise_target_kph_ + 1.0);
+}
+void BulletVehicleSimulator::decrease_cruise_speed() {
+    if (cruise_target_kph_ < 0) {
+        cruise_target_kph_ = visual_.speed_kph;
+        cruise_control_active_ = true;
+    }
+    else
+        cruise_target_kph_ = std::max(0.0, cruise_target_kph_ - 1.0);
+}
+void BulletVehicleSimulator::toggle_cruise_control() {
+    if (cruise_target_kph_ < 0)
+        cruise_target_kph_ = visual_.speed_kph;
+    cruise_control_active_ = !cruise_control_active_;
+    cruise_integral_ = 0;
+    previous_cruise_error_ = 0;
+}
 const SimulatorVisualState &BulletVehicleSimulator::visual_state() const {
     return visual_;
 }
@@ -200,25 +226,68 @@ void BulletVehicleSimulator::advance(double dt) {
     btRigidBody &body = *physics_->car_body;
     const btVector3 old_velocity = body.getLinearVelocity();
     const double old_speed = std::hypot(old_velocity.x(), old_velocity.z());
-    const double throttle = controls_.throttle ? 1.0 : 0.0;
+    const double driver_throttle = controls_.throttle ? 1.0 : 0.0;
     const double brake_target =
         controls_.brake || controls_.emergency_brake ? 1.0 : 0.0;
+    if (brake_target > 0) {
+        cruise_control_active_ = false;
+        cruise_integral_ = 0;
+    }
     const double brake_response = controls_.emergency_brake ? 10.0 : 2.5;
     brake_application_ += (brake_target - brake_application_) *
                           std::min(1.0, dt * brake_response);
     const bool can_drive = gear_ == Gear::drive || gear_ == Gear::reverse;
     const double direction = gear_ == Gear::reverse ? -1.0 : 1.0;
+    double cruise_throttle = 0;
+    if (cruise_control_active_ && gear_ == Gear::drive && brake_target == 0) {
+        const double error = cruise_target_kph_ - old_speed * 3.6;
+        cruise_integral_ =
+            std::clamp(cruise_integral_ + error * dt, -20.0, 20.0);
+        const double derivative = (error - previous_cruise_error_) / dt;
+        const double derivative_term =
+            std::clamp(derivative * 0.004, -0.2, 0.2);
+        cruise_throttle = std::clamp(error * 0.06 + cruise_integral_ * 0.012 +
+                                         derivative_term,
+                                     0.0,
+                                     1.0);
+        previous_cruise_error_ = error;
+    }
+    else if (!cruise_control_active_) {
+        cruise_integral_ = 0;
+        previous_cruise_error_ = 0;
+    }
+    const double throttle = std::max(driver_throttle, cruise_throttle);
     const double power_limit = visual_.drivetrain_fault || visual_.battery_fault
                                    ? maximum_drive_power_w * 0.25
                                    : maximum_drive_power_w;
     const double traction_magnitude =
         can_drive && throttle > 0 && brake_target == 0
-            ? std::min(8500.0, power_limit / std::max(3.0, old_speed))
+            ? throttle *
+                  std::min(8500.0, power_limit / std::max(3.0, old_speed))
             : 0;
 
-    // Bullet's positive steering angle turns left, matching A/Left.
-    const double steer_target = (controls_.steer_left ? 1.0 : 0.0) -
-                                (controls_.steer_right ? 1.0 : 0.0);
+    // Driver steering overrides assistance. Otherwise lane assist aims at a
+    // point 50 metres ahead on the road centerline.
+    const double driver_steering = (controls_.steer_left ? 1.0 : 0.0) -
+                                   (controls_.steer_right ? 1.0 : 0.0);
+    double steer_target = driver_steering;
+    if (lane_assist_enabled_ && driver_steering == 0) {
+        const btTransform steering_transform = body.getWorldTransform();
+        const btVector3 position = steering_transform.getOrigin();
+        const btVector3 current_forward =
+            steering_transform.getBasis() * btVector3(0, 0, 1);
+        const double road_direction = current_forward.z() >= 0 ? 1.0 : -1.0;
+        const double desired_heading =
+            std::atan2(-position.x(), road_direction * 50.0);
+        const double current_heading =
+            std::atan2(current_forward.x(), current_forward.z());
+        double heading_error = desired_heading - current_heading;
+        while (heading_error > 3.141592653589793)
+            heading_error -= 2 * 3.141592653589793;
+        while (heading_error < -3.141592653589793)
+            heading_error += 2 * 3.141592653589793;
+        steer_target = std::clamp(heading_error * 1.8, -1.0, 1.0);
+    }
     visual_.steering +=
         (steer_target - visual_.steering) * std::min(1.0, dt * 5.0);
     const btScalar steering_angle = (btScalar)(visual_.steering * 0.48);
@@ -377,5 +446,8 @@ VehicleData BulletVehicleSimulator::sample(double elapsed_seconds) {
     data.warnings.battery_warning = visual_.battery_fault;
     data.warnings.general_warning =
         visual_.drivetrain_fault || std::abs(visual_.lateral_position_m) > 2.8;
+    data.warnings.lane_assist = lane_assist_enabled_;
+    data.warnings.cruise_control = cruise_control_active_;
+    data.cruise_control_target_kph = cruise_target_kph_;
     return data;
 }

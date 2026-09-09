@@ -36,5 +36,9 @@ public:
     virtual void toggle_tire_fault() = 0;
     virtual void toggle_drivetrain_fault() = 0;
     virtual void toggle_seat_belt() = 0;
+    virtual void toggle_lane_assist() = 0;
+    virtual void increase_cruise_speed() = 0;
+    virtual void decrease_cruise_speed() = 0;
+    virtual void toggle_cruise_control() = 0;
     virtual const SimulatorVisualState &visual_state() const = 0;
 };

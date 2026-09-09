@@ -12,7 +12,7 @@ enum class DriverDashboardStyle { modern_rings, legacy };
 struct DriverDashboardAnimation {
     double displayed_power_kw = 0;
     double last_power_update_seconds = -1;
-    std::array<float, 6> indicator_intensity{};
+    std::array<float, 8> indicator_intensity{};
     double last_indicator_update_seconds = -1;
 };
 void draw_driver_display(

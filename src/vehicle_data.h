@@ -8,12 +8,13 @@ struct WarningStates {
     bool left_indicator = false, right_indicator = false, high_beam = false,
          headlights = true, seat_belt = false, parking_brake = false,
          tire_pressure = false, battery_warning = false,
-         general_warning = false;
+         general_warning = false, lane_assist = false, cruise_control = false;
 };
 struct VehicleData {
     double simulation_time_seconds = 0, speed_kph = 0, battery_soc_percent = 0,
            estimated_range_km = 0, power_kw = 0, consumption_kwh_per_100km = 0,
-           trip_distance_km = 0, odometer_km = 0, outside_temperature_c = 0;
+           trip_distance_km = 0, odometer_km = 0, outside_temperature_c = 0,
+           cruise_control_target_kph = -1;
     Gear gear = Gear::drive;
     DriveMode drive_mode = DriveMode::normal;
     WarningStates warnings;

@@ -1,5 +1,4 @@
 #include "bullet_vehicle_simulator.h"
-#include "two_d_vehicle_simulator.h"
 #include "vehicle_data.h"
 #include <cassert>
 #include <cmath>
@@ -72,21 +71,71 @@ int main() {
     assert(after_gentle_braking.speed_kph < speed_before_braking.speed_kph);
     assert(after_gentle_braking.trip_energy_regenerated_kwh > 0);
 
+    BulletVehicleSimulator assisted_simulator;
+    SimulatorControls assisted_controls;
+    assisted_controls.throttle = true;
+    assisted_simulator.set_controls(assisted_controls);
+    assisted_simulator.sample(0);
+    VehicleData assistance_data;
+    for (int i = 1; i <= 240; ++i)
+        assistance_data = assisted_simulator.sample(i * .025);
+    assisted_controls.throttle = false;
+    assisted_simulator.set_controls(assisted_controls);
+    assisted_simulator.increase_cruise_speed();
+    assistance_data = assisted_simulator.sample(6.025);
+    assert(assistance_data.warnings.cruise_control);
+    assert(assistance_data.cruise_control_target_kph >= 0);
+    const double saved_cruise_target =
+        assistance_data.cruise_control_target_kph;
+    assisted_simulator.increase_cruise_speed();
+    assistance_data = assisted_simulator.sample(6.05);
+    assert(std::abs(assistance_data.cruise_control_target_kph -
+                    (saved_cruise_target + 1)) < .01);
+    assisted_simulator.toggle_cruise_control();
+    assistance_data = assisted_simulator.sample(6.075);
+    assert(!assistance_data.warnings.cruise_control);
+    assert(assistance_data.cruise_control_target_kph > 0);
+    assisted_simulator.toggle_cruise_control();
+    assisted_simulator.toggle_lane_assist();
+    assistance_data = assisted_simulator.sample(6.1);
+    assert(assistance_data.warnings.cruise_control);
+    assert(assistance_data.warnings.lane_assist);
+    for (int i = 245; i <= 324; ++i)
+        assistance_data = assisted_simulator.sample(i * .025);
+    assert(std::abs(assistance_data.speed_kph -
+                    assistance_data.cruise_control_target_kph) < 8);
+    assisted_controls.brake = true;
+    assisted_simulator.set_controls(assisted_controls);
+    assistance_data = assisted_simulator.sample(8.125);
+    assert(!assistance_data.warnings.cruise_control);
+    assert(assistance_data.cruise_control_target_kph > 0);
+
+    BulletVehicleSimulator lane_simulator;
+    SimulatorControls lane_controls;
+    lane_controls.throttle = true;
+    lane_simulator.set_controls(lane_controls);
+    lane_simulator.sample(0);
+    for (int i = 1; i <= 160; ++i)
+        lane_simulator.sample(i * .025);
+    lane_controls.steer_right = true;
+    lane_simulator.set_controls(lane_controls);
+    for (int i = 161; i <= 210; ++i)
+        lane_simulator.sample(i * .025);
+    const double lane_departure =
+        std::abs(lane_simulator.visual_state().world_position_x_m);
+    assert(lane_departure > .1);
+    lane_controls.steer_right = false;
+    lane_simulator.set_controls(lane_controls);
+    lane_simulator.toggle_lane_assist();
+    for (int i = 211; i <= 450; ++i)
+        lane_simulator.sample(i * .025);
+    assert(std::abs(lane_simulator.visual_state().world_position_x_m) <
+           lane_departure);
+
     simulator.toggle_tire_fault();
     simulator.toggle_battery_fault();
     VehicleData faulted = simulator.sample(17.1);
     assert(faulted.warnings.tire_pressure);
     assert(faulted.warnings.battery_warning);
     assert(faulted.tire_pressure_rear_right_bar < 2.2);
-
-    TwoDVehicleSimulator two_d_simulator;
-    controls.brake = false;
-    controls.throttle = true;
-    two_d_simulator.set_controls(controls);
-    two_d_simulator.sample(0);
-    VehicleData two_d_driven;
-    for (int i = 1; i <= 400; ++i)
-        two_d_driven = two_d_simulator.sample(i * 0.025);
-    assert(two_d_driven.speed_kph > 10);
-    assert(two_d_driven.trip_energy_used_kwh > 0);
 }

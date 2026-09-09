@@ -252,15 +252,17 @@ void DashboardGlowRenderer::render(int pixel_width,
                                         (bounds.height - 480 * scale) / 2};
     std::vector<GlowVertex> vertices;
     vertices.reserve(1200);
-    const std::array<std::array<float, 3>, 6> colors = {
+    const std::array<std::array<float, 3>, 8> colors = {
         std::array<float, 3>{.063f, .725f, .506f},
         std::array<float, 3>{.063f, .725f, .506f},
         std::array<float, 3>{.231f, .51f, .965f},
+        std::array<float, 3>{.063f, .725f, .506f},
+        std::array<float, 3>{0, .745f, .961f},
         std::array<float, 3>{.961f, .62f, .043f},
         std::array<float, 3>{.937f, .267f, .267f},
         std::array<float, 3>{.063f, .725f, .506f}};
-    const float icon_x[] = {260, 316, 372, 428, 484, 540};
-    for (int i = 0; i < 6; ++i) {
+    const float icon_x[] = {204, 260, 316, 372, 428, 484, 540, 596};
+    for (int i = 0; i < 8; ++i) {
         const float intensity = animation.indicator_intensity[i];
         if (intensity > .001f)
             disc(vertices,

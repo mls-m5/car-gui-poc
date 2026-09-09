@@ -33,13 +33,11 @@ cmake --build build
 
 Press Escape to close all windows. Closing an individual window leaves the
 others running. The default native mode uses the automatic dummy backend. The
-interactive mode opens a third window. Its default is the Bullet backend with
-a procedural GLES2 3D road. The original 2D view uses a completely separate,
-lightweight vehicle model and remains available:
+interactive mode opens a third window using the Bullet backend with a
+procedural GLES2 3D road:
 
 ```sh
 ./build/car-gui --backend=simulator
-./build/car-gui --backend=simulator --view=2d
 ./build/car-gui --dashboard=legacy
 ```
 
@@ -59,10 +57,15 @@ Simulator controls:
 - `L` toggles headlights and `H` toggles high beam.
 - `B`, `T`, and `F` toggle battery, tire-pressure, and drivetrain faults.
 - `X` toggles the seat belt.
+- `K` toggles lane assist. It steers toward a point 50 metres ahead on the
+  road centerline unless the driver is steering manually.
+- `+`/`=` sets or increases cruise speed; `-` sets or decreases it.
+- `C` pauses or resumes cruise control. Braking pauses cruise while preserving
+  its displayed target; the accelerator can temporarily demand more power.
 
 All dashboard values arrive through the decoded `VehicleDataSource` boundary.
-The automatic, lightweight 2D, and Bullet-powered 3D simulators separately
-implement it without exposing their models to the dashboard renderers. In the
+The automatic data source and Bullet-powered simulator implement it without
+exposing their models to the dashboard renderers. In the
 3D backend, acceleration, drag, braking, regeneration, and battery energy use
 are derived from the rigid body's motion and applied forces. A future
 `NetworkVehicleDataSource` can own
@@ -82,9 +85,8 @@ ctest --test-dir build --output-on-failure
 Native builds use two SDL windows. Browsers use one canvas, so the web build
 provides `3D DRIVE`, `DRIVER`, `DETAILS`, and `ALL` views in an in-canvas
 navigation bar. `ALL` is selected by default and places the Bullet-powered 3D
-road above both live dashboard panels. The lightweight 2D road
-is native-only (`--view=2d`). Use the buttons, keys `1` through `4`, or `Tab`
-to switch browser views. Press `V` to switch between the modern ring dashboard
+road above both live dashboard panels. Use the buttons, keys `1` through `4`,
+or `Tab` to switch browser views. Press `V` to switch between the modern ring dashboard
 and the preserved legacy dashboard. The same driving and fault controls listed
 above work while the canvas has focus.
 

@@ -271,6 +271,42 @@ void compact_headlight(
     paths(color, 2.f + .6f * intensity);
     nvgRestore(v);
 }
+void compact_lane_assist(NVGcontext *v, float x, float y, float intensity) {
+    const NVGcolor color = blend_color(nvgRGB(42, 50, 61), green, intensity);
+    nvgSave(v);
+    nvgStrokeColor(v, color);
+    nvgStrokeWidth(v, 2.2f);
+    nvgLineCap(v, NVG_ROUND);
+    nvgBeginPath(v);
+    nvgMoveTo(v, x - 12, y + 12);
+    nvgLineTo(v, x - 7, y - 12);
+    nvgMoveTo(v, x + 12, y + 12);
+    nvgLineTo(v, x + 7, y - 12);
+    nvgMoveTo(v, x, y + 9);
+    nvgLineTo(v, x, y - 7);
+    nvgMoveTo(v, x - 4, y - 3);
+    nvgLineTo(v, x, y - 8);
+    nvgLineTo(v, x + 4, y - 3);
+    nvgStroke(v);
+    nvgRestore(v);
+}
+void compact_cruise_control(NVGcontext *v, float x, float y, float intensity) {
+    const NVGcolor color = blend_color(nvgRGB(42, 50, 61), cyan, intensity);
+    nvgSave(v);
+    nvgStrokeColor(v, color);
+    nvgStrokeWidth(v, 2.2f);
+    nvgLineCap(v, NVG_ROUND);
+    nvgBeginPath(v);
+    nvgArc(v, x, y + 1, 12, 2.75f, .39f, NVG_CW);
+    nvgMoveTo(v, x, y + 1);
+    nvgLineTo(v, x + 7, y - 5);
+    nvgStroke(v);
+    nvgBeginPath(v);
+    nvgCircle(v, x, y + 1, 2.2f);
+    nvgFillColor(v, color);
+    nvgFill(v);
+    nvgRestore(v);
+}
 void compact_warning(
     NVGcontext *v, float x, float y, float intensity, bool tire) {
     const NVGcolor color =
@@ -349,14 +385,16 @@ void draw_modern_driver_display(NVGcontext *v,
         animation->last_power_update_seconds = d.simulation_time_seconds;
         displayed_power_kw = animation->displayed_power_kw;
     }
-    const std::array<float, 6> indicator_targets = {
+    const std::array<float, 8> indicator_targets = {
         d.warnings.left_indicator ? 1.f : 0.f,
         d.warnings.headlights && !d.warnings.high_beam ? 1.f : 0.f,
         d.warnings.high_beam ? 1.f : 0.f,
+        d.warnings.lane_assist ? 1.f : 0.f,
+        d.warnings.cruise_control ? 1.f : 0.f,
         d.warnings.tire_pressure ? 1.f : 0.f,
         d.warnings.general_warning || d.warnings.battery_warning ? 1.f : 0.f,
         d.warnings.right_indicator ? 1.f : 0.f};
-    std::array<float, 6> indicator_intensity = indicator_targets;
+    std::array<float, 8> indicator_intensity = indicator_targets;
     if (animation) {
         if (animation->last_indicator_update_seconds < 0)
             animation->last_indicator_update_seconds =
@@ -392,12 +430,14 @@ void draw_modern_driver_display(NVGcontext *v,
     nvgStrokeWidth(v, 1);
     nvgStroke(v);
 
-    compact_turn_signal(v, 260, 58, false, indicator_intensity[0]);
-    compact_headlight(v, 316, 58, indicator_intensity[1], false);
-    compact_headlight(v, 372, 58, indicator_intensity[2], true);
-    compact_warning(v, 428, 58, indicator_intensity[3], true);
-    compact_warning(v, 484, 58, indicator_intensity[4], false);
-    compact_turn_signal(v, 540, 58, true, indicator_intensity[5]);
+    compact_turn_signal(v, 204, 58, false, indicator_intensity[0]);
+    compact_headlight(v, 260, 58, indicator_intensity[1], false);
+    compact_headlight(v, 316, 58, indicator_intensity[2], true);
+    compact_lane_assist(v, 372, 58, indicator_intensity[3]);
+    compact_cruise_control(v, 428, 58, indicator_intensity[4]);
+    compact_warning(v, 484, 58, indicator_intensity[5], true);
+    compact_warning(v, 540, 58, indicator_intensity[6], false);
+    compact_turn_signal(v, 596, 58, true, indicator_intensity[7]);
     nvgBeginPath(v);
     nvgMoveTo(v, 55, 92);
     nvgLineTo(v, 745, 92);
@@ -429,7 +469,21 @@ void draw_modern_driver_display(NVGcontext *v,
                    range,
                    "KM REMAINING",
                    !regenerating);
-    txt(v, gear_name(d.gear), 400, 225, 26, cyan, NVG_ALIGN_CENTER);
+    txt(v, gear_name(d.gear), 400, 215, 26, cyan, NVG_ALIGN_CENTER);
+    if (d.cruise_control_target_kph >= 0) {
+        char cruise_target[48];
+        std::snprintf(cruise_target,
+                      sizeof cruise_target,
+                      "SET %.0f KM/H",
+                      d.cruise_control_target_kph);
+        txt(v,
+            cruise_target,
+            400,
+            252,
+            11,
+            d.warnings.cruise_control ? cyan : muted,
+            NVG_ALIGN_CENTER);
+    }
 
     nvgTextLetterSpacing(v, 1.f);
     txt(v, "BATTERY", 200, 369, 13, muted);
@@ -481,6 +535,8 @@ void draw_legacy_driver_display(NVGcontext *v,
         32,
         d.drive_mode == DriveMode::eco ? nvgRGBA(49, 220, 155, 45) : cyan);
     txt(v, mode_name(d.drive_mode), 550, 50, 13, white, NVG_ALIGN_CENTER);
+    compact_lane_assist(v, 430, 50, d.warnings.lane_assist ? 1.f : 0.f);
+    compact_cruise_control(v, 670, 50, d.warnings.cruise_control ? 1.f : 0.f);
     char temp[32];
     std::snprintf(temp, sizeof temp, "%.0f °C", d.outside_temperature_c);
     txt(v, temp, 965, 50, 14, white, NVG_ALIGN_RIGHT);
@@ -500,6 +556,20 @@ void draw_legacy_driver_display(NVGcontext *v,
         14,
         d.power_kw < 0 ? green : muted,
         NVG_ALIGN_CENTER);
+    if (d.cruise_control_target_kph >= 0) {
+        char cruise_target[48];
+        std::snprintf(cruise_target,
+                      sizeof cruise_target,
+                      "CRUISE SET %.0f KM/H",
+                      d.cruise_control_target_kph);
+        txt(v,
+            cruise_target,
+            550,
+            425,
+            11,
+            d.warnings.cruise_control ? cyan : muted,
+            NVG_ALIGN_CENTER);
+    }
     val(v, 155, 178, d.power_kw, "kW", d.power_kw < 0 ? green : cyan);
     bar(v,
         58,

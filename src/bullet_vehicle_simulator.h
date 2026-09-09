@@ -20,6 +20,10 @@ public:
     void toggle_tire_fault() override;
     void toggle_drivetrain_fault() override;
     void toggle_seat_belt() override;
+    void toggle_lane_assist() override;
+    void increase_cruise_speed() override;
+    void decrease_cruise_speed() override;
+    void toggle_cruise_control() override;
     const SimulatorVisualState &visual_state() const override;
 
 private:
@@ -33,6 +37,9 @@ private:
     double previous_time_ = -1;
     double speed_mps_ = 0;
     double brake_application_ = 0;
+    double cruise_target_kph_ = -1;
+    double cruise_integral_ = 0;
+    double previous_cruise_error_ = 0;
     double last_power_kw_ = 0;
     double battery_energy_kwh_ = 48;
     double trip_distance_km_ = 0;
@@ -42,4 +49,6 @@ private:
     double motor_temperature_c_ = 24;
     double inverter_temperature_c_ = 24;
     bool seat_belt_fastened_ = true;
+    bool lane_assist_enabled_ = false;
+    bool cruise_control_active_ = false;
 };

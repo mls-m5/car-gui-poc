@@ -3,7 +3,6 @@
 #include "dashboard_glow.h"
 #include "simulator_3d.h"
 #include "simulator_view.h"
-#include "two_d_vehicle_simulator.h"
 #include <GLES2/gl2.h>
 #include <SDL2/SDL.h>
 #include <algorithm>
@@ -102,7 +101,7 @@ static void destroy(Display &display) {
     display = {};
 }
 
-enum class DisplayContent { driver, details, simulator_2d, simulator_3d };
+enum class DisplayContent { driver, details, simulator_3d };
 
 static void render(
     Display &display,
@@ -135,8 +134,6 @@ static void render(
                             &display.dashboard_animation);
     else if (content == DisplayContent::details)
         draw_vehicle_details(display.vg, bounds, data);
-    else if (content == DisplayContent::simulator_2d && visual)
-        draw_simulator_view(display.vg, bounds, *visual);
     if (content == DisplayContent::simulator_3d && visual)
         draw_simulator_hud(display.vg, bounds, *visual);
     nvgEndFrame(display.vg);
@@ -197,6 +194,21 @@ static void handle_simulator_toggle(InteractiveVehicleSimulator &simulator,
         break;
     case SDLK_x:
         simulator.toggle_seat_belt();
+        break;
+    case SDLK_k:
+        simulator.toggle_lane_assist();
+        break;
+    case SDLK_EQUALS:
+    case SDLK_PLUS:
+    case SDLK_KP_PLUS:
+        simulator.increase_cruise_speed();
+        break;
+    case SDLK_MINUS:
+    case SDLK_KP_MINUS:
+        simulator.decrease_cruise_speed();
+        break;
+    case SDLK_c:
+        simulator.toggle_cruise_control();
         break;
     default:
         break;
@@ -456,12 +468,10 @@ int main(int argc, char **argv) {
     if (base_path)
         SDL_free((void *)base_path);
     bool interactive = false;
-    bool use_2d_view = false;
     DriverDashboardStyle dashboard_style = DriverDashboardStyle::modern_rings;
     for (int i = 1; i < argc; ++i) {
         interactive =
             interactive || std::string(argv[i]) == "--backend=simulator";
-        use_2d_view = use_2d_view || std::string(argv[i]) == "--view=2d";
         if (std::string(argv[i]) == "--dashboard=legacy")
             dashboard_style = DriverDashboardStyle::legacy;
         if (std::string(argv[i]) == "--dashboard=modern")
@@ -490,7 +500,7 @@ int main(int argc, char **argv) {
                                         1000,
                                         650,
                                         font.c_str()));
-    if (displays_created && interactive && !use_2d_view)
+    if (displays_created && interactive)
         displays_created = initialize_3d(simulator_display);
     if (!displays_created) {
         destroy(simulator_display);
@@ -501,10 +511,7 @@ int main(int argc, char **argv) {
     }
     SimulatedVehicleDataSource dummy_source;
     BulletVehicleSimulator simulator_3d;
-    TwoDVehicleSimulator simulator_2d;
-    InteractiveVehicleSimulator *interactive_source =
-        use_2d_view ? static_cast<InteractiveVehicleSimulator *>(&simulator_2d)
-                    : static_cast<InteractiveVehicleSimulator *>(&simulator_3d);
+    InteractiveVehicleSimulator *interactive_source = &simulator_3d;
     VehicleDataSource *source =
         interactive ? static_cast<VehicleDataSource *>(interactive_source)
                     : static_cast<VehicleDataSource *>(&dummy_source);
@@ -554,8 +561,7 @@ int main(int argc, char **argv) {
         if (simulator_display.open)
             render(simulator_display,
                    data,
-                   use_2d_view ? DisplayContent::simulator_2d
-                               : DisplayContent::simulator_3d,
+                   DisplayContent::simulator_3d,
                    &interactive_source->visual_state());
         SDL_Delay(16);
     }
