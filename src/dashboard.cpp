@@ -307,7 +307,22 @@ void circular_gauge(NVGcontext *v,
 }
 void draw_modern_driver_display(NVGcontext *v,
                                 const Rect &bounds,
-                                const VehicleData &d) {
+                                const VehicleData &d,
+                                DriverDashboardAnimation *animation) {
+    double displayed_power_kw = d.power_kw;
+    if (animation) {
+        if (animation->last_power_update_seconds < 0)
+            animation->last_power_update_seconds = d.simulation_time_seconds;
+        const double dt = std::clamp(d.simulation_time_seconds -
+                                         animation->last_power_update_seconds,
+                                     0.0,
+                                     0.1);
+        animation->displayed_power_kw +=
+            (d.power_kw - animation->displayed_power_kw) *
+            std::min(1.0, dt * 4.0);
+        animation->last_power_update_seconds = d.simulation_time_seconds;
+        displayed_power_kw = animation->displayed_power_kw;
+    }
     const float sx = std::min(bounds.width / 800.f, bounds.height / 480.f);
     const float ox = bounds.x + (bounds.width - 800 * sx) / 2;
     const float oy = bounds.y + (bounds.height - 480 * sx) / 2;
@@ -347,7 +362,7 @@ void draw_modern_driver_display(NVGcontext *v,
 
     char speed[24], power[24], soc[24], trip[48], temperature[32];
     std::snprintf(speed, sizeof speed, "%.0f", d.speed_kph);
-    std::snprintf(power, sizeof power, "%.0f", std::abs(d.power_kw));
+    std::snprintf(power, sizeof power, "%.0f", std::abs(displayed_power_kw));
     circular_gauge(v,
                    225,
                    225,
@@ -356,14 +371,15 @@ void draw_modern_driver_display(NVGcontext *v,
                    speed,
                    "KM/H",
                    false);
-    const bool regenerating = d.power_kw < -0.05;
+    const bool regenerating = displayed_power_kw < -0.05;
     const float power_limit =
         (float)(regenerating ? d.available_regen_power_kw
                              : d.available_discharge_power_kw);
     circular_gauge(v,
                    575,
                    225,
-                   (float)std::abs(d.power_kw) / std::max(1.f, power_limit),
+                   (float)std::abs(displayed_power_kw) /
+                       std::max(1.f, power_limit),
                    regenerating ? nvgRGB(56, 239, 125) : nvgRGB(0, 242, 254),
                    power,
                    regenerating ? "KW CHARGE" : "KW OUTPUT",
@@ -501,11 +517,12 @@ void draw_legacy_driver_display(NVGcontext *v,
 void draw_driver_display(NVGcontext *v,
                          const Rect &bounds,
                          const VehicleData &d,
-                         DriverDashboardStyle style) {
+                         DriverDashboardStyle style,
+                         DriverDashboardAnimation *animation) {
     if (style == DriverDashboardStyle::legacy)
         draw_legacy_driver_display(v, bounds, d);
     else
-        draw_modern_driver_display(v, bounds, d);
+        draw_modern_driver_display(v, bounds, d, animation);
 }
 void draw_vehicle_details(NVGcontext *v,
                           const Rect &bounds,

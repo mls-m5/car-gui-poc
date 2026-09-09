@@ -8,9 +8,14 @@ struct Rect {
     float height;
 };
 enum class DriverDashboardStyle { modern_rings, legacy };
+struct DriverDashboardAnimation {
+    double displayed_power_kw = 0;
+    double last_power_update_seconds = -1;
+};
 void draw_driver_display(
     NVGcontext *,
     const Rect &,
     const VehicleData &,
-    DriverDashboardStyle = DriverDashboardStyle::modern_rings);
+    DriverDashboardStyle = DriverDashboardStyle::modern_rings,
+    DriverDashboardAnimation * = nullptr);
 void draw_vehicle_details(NVGcontext *, const Rect &, const VehicleData &);

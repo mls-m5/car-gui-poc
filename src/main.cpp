@@ -20,6 +20,7 @@ struct Display {
     SDL_GLContext context = nullptr;
     NVGcontext *vg = nullptr;
     std::unique_ptr<Simulator3DRenderer> renderer_3d;
+    DriverDashboardAnimation dashboard_animation;
     bool open = false;
 };
 
@@ -116,7 +117,11 @@ static void render(
         display.vg, (float)width, (float)height, (float)pixel_width / width);
     const Rect bounds{0, 0, (float)width, (float)height};
     if (content == DisplayContent::driver)
-        draw_driver_display(display.vg, bounds, data, dashboard_style);
+        draw_driver_display(display.vg,
+                            bounds,
+                            data,
+                            dashboard_style,
+                            &display.dashboard_animation);
     else if (content == DisplayContent::details)
         draw_vehicle_details(display.vg, bounds, data);
     else if (content == DisplayContent::simulator_2d && visual)
@@ -330,7 +335,11 @@ static void web_frame(void *arg) {
         draw_simulator_hud(
             app.display.vg, content, app.simulator_3d.visual_state());
     else if (app.view == WebView::driver)
-        draw_driver_display(app.display.vg, content, data, app.dashboard_style);
+        draw_driver_display(app.display.vg,
+                            content,
+                            data,
+                            app.dashboard_style,
+                            &app.display.dashboard_animation);
     else if (app.view == WebView::details)
         draw_vehicle_details(app.display.vg, content, data);
     else {
@@ -346,7 +355,8 @@ static void web_frame(void *arg) {
         draw_driver_display(app.display.vg,
                             {content.x, panels_y, driver_width, panels_height},
                             data,
-                            app.dashboard_style);
+                            app.dashboard_style,
+                            &app.display.dashboard_animation);
         draw_vehicle_details(app.display.vg,
                              {content.x + driver_width + gap,
                               panels_y,
