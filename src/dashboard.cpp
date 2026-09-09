@@ -220,10 +220,17 @@ void warning_symbol(NVGcontext *v,
     }
     nvgRestore(v);
 }
+NVGcolor blend_color(NVGcolor from, NVGcolor to, float amount) {
+    amount = std::clamp(amount, 0.f, 1.f);
+    return {from.r + (to.r - from.r) * amount,
+            from.g + (to.g - from.g) * amount,
+            from.b + (to.b - from.b) * amount,
+            from.a + (to.a - from.a) * amount};
+}
 void compact_turn_signal(
-    NVGcontext *v, float x, float y, bool points_left, bool active) {
+    NVGcontext *v, float x, float y, bool points_left, float intensity) {
     const float direction = points_left ? -1.f : 1.f;
-    const NVGcolor color = active ? green : nvgRGB(42, 50, 61);
+    const NVGcolor color = blend_color(nvgRGB(42, 50, 61), green, intensity);
     auto path = [&] {
         nvgBeginPath(v);
         nvgMoveTo(v, x + direction * 14, y - 4);
@@ -235,9 +242,10 @@ void compact_turn_signal(
         nvgLineTo(v, x + direction * 14, y + 4);
         nvgClosePath(v);
     };
-    if (active) {
+    if (intensity > .001f) {
         path();
-        nvgStrokeColor(v, nvgRGBA(16, 185, 129, 55));
+        nvgStrokeColor(v,
+                       nvgRGBA(16, 185, 129, (unsigned char)(55 * intensity)));
         nvgStrokeWidth(v, 9);
         nvgStroke(v);
     }
@@ -246,9 +254,10 @@ void compact_turn_signal(
     nvgFill(v);
 }
 void compact_headlight(
-    NVGcontext *v, float x, float y, bool active, bool high_beam) {
-    const NVGcolor color = active ? (high_beam ? nvgRGB(59, 130, 246) : green)
-                                  : nvgRGB(42, 50, 61);
+    NVGcontext *v, float x, float y, float intensity, bool high_beam) {
+    const NVGcolor active_color = high_beam ? nvgRGB(59, 130, 246) : green;
+    const NVGcolor color =
+        blend_color(nvgRGB(42, 50, 61), active_color, intensity);
     auto paths = [&](NVGcolor stroke_color, float stroke_width) {
         nvgStrokeColor(v, stroke_color);
         nvgStrokeWidth(v, stroke_width);
@@ -266,14 +275,18 @@ void compact_headlight(
     };
     nvgSave(v);
     nvgLineCap(v, NVG_ROUND);
-    if (active)
-        paths(high_beam ? nvgRGBA(59, 130, 246, 45) : nvgRGBA(16, 185, 129, 45),
+    if (intensity > .001f)
+        paths(high_beam
+                  ? nvgRGBA(59, 130, 246, (unsigned char)(45 * intensity))
+                  : nvgRGBA(16, 185, 129, (unsigned char)(45 * intensity)),
               9);
-    paths(color, active ? 2.6f : 2.f);
+    paths(color, 2.f + .6f * intensity);
     nvgRestore(v);
 }
-void compact_warning(NVGcontext *v, float x, float y, bool active, bool tire) {
-    const NVGcolor color = active ? (tire ? amber : red) : nvgRGB(42, 50, 61);
+void compact_warning(
+    NVGcontext *v, float x, float y, float intensity, bool tire) {
+    const NVGcolor color =
+        blend_color(nvgRGB(42, 50, 61), tire ? amber : red, intensity);
     nvgSave(v);
     nvgStrokeColor(v, color);
     nvgFillColor(v, color);
@@ -293,9 +306,11 @@ void compact_warning(NVGcontext *v, float x, float y, bool active, bool tire) {
         nvgLineTo(v, x + 14, y + 12);
         nvgClosePath(v);
     }
-    if (active) {
+    if (intensity > .001f) {
         nvgStrokeColor(
-            v, tire ? nvgRGBA(245, 158, 11, 48) : nvgRGBA(239, 68, 68, 52));
+            v,
+            tire ? nvgRGBA(245, 158, 11, (unsigned char)(48 * intensity))
+                 : nvgRGBA(239, 68, 68, (unsigned char)(52 * intensity)));
         nvgStrokeWidth(v, 9);
         nvgStroke(v);
         nvgStrokeColor(v, color);
@@ -364,6 +379,30 @@ void draw_modern_driver_display(NVGcontext *v,
         animation->last_power_update_seconds = d.simulation_time_seconds;
         displayed_power_kw = animation->displayed_power_kw;
     }
+    const std::array<float, 6> indicator_targets = {
+        d.warnings.left_indicator ? 1.f : 0.f,
+        d.warnings.headlights && !d.warnings.high_beam ? 1.f : 0.f,
+        d.warnings.high_beam ? 1.f : 0.f,
+        d.warnings.tire_pressure ? 1.f : 0.f,
+        d.warnings.general_warning || d.warnings.battery_warning ? 1.f : 0.f,
+        d.warnings.right_indicator ? 1.f : 0.f};
+    std::array<float, 6> indicator_intensity = indicator_targets;
+    if (animation) {
+        if (animation->last_indicator_update_seconds < 0)
+            animation->last_indicator_update_seconds =
+                d.simulation_time_seconds;
+        const double indicator_dt =
+            std::clamp(d.simulation_time_seconds -
+                           animation->last_indicator_update_seconds,
+                       0.0,
+                       0.1);
+        for (std::size_t i = 0; i < indicator_targets.size(); ++i)
+            animation->indicator_intensity[i] +=
+                (indicator_targets[i] - animation->indicator_intensity[i]) *
+                std::min(1.0, indicator_dt * 7.0);
+        animation->last_indicator_update_seconds = d.simulation_time_seconds;
+        indicator_intensity = animation->indicator_intensity;
+    }
     const float sx = std::min(bounds.width / 800.f, bounds.height / 480.f);
     const float ox = bounds.x + (bounds.width - 800 * sx) / 2;
     const float oy = bounds.y + (bounds.height - 480 * sx) / 2;
@@ -383,17 +422,12 @@ void draw_modern_driver_display(NVGcontext *v,
     nvgStrokeWidth(v, 1);
     nvgStroke(v);
 
-    compact_turn_signal(v, 260, 58, false, d.warnings.left_indicator);
-    compact_headlight(
-        v, 316, 58, d.warnings.headlights && !d.warnings.high_beam, false);
-    compact_headlight(v, 372, 58, d.warnings.high_beam, true);
-    compact_warning(v, 428, 58, d.warnings.tire_pressure, true);
-    compact_warning(v,
-                    484,
-                    58,
-                    d.warnings.general_warning || d.warnings.battery_warning,
-                    false);
-    compact_turn_signal(v, 540, 58, true, d.warnings.right_indicator);
+    compact_turn_signal(v, 260, 58, false, indicator_intensity[0]);
+    compact_headlight(v, 316, 58, indicator_intensity[1], false);
+    compact_headlight(v, 372, 58, indicator_intensity[2], true);
+    compact_warning(v, 428, 58, indicator_intensity[3], true);
+    compact_warning(v, 484, 58, indicator_intensity[4], false);
+    compact_turn_signal(v, 540, 58, true, indicator_intensity[5]);
     nvgBeginPath(v);
     nvgMoveTo(v, 55, 92);
     nvgLineTo(v, 745, 92);
