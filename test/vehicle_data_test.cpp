@@ -121,16 +121,16 @@ int main() {
     lane_simulator.set_controls(lane_controls);
     for (int i = 161; i <= 210; ++i)
         lane_simulator.sample(i * .025);
-    const double lane_departure =
-        std::abs(lane_simulator.visual_state().world_position_x_m);
-    assert(lane_departure > .1);
+    const double distance_from_right_lane =
+        std::abs(lane_simulator.visual_state().world_position_x_m + 2.5);
+    assert(distance_from_right_lane > .1);
     lane_controls.steer_right = false;
     lane_simulator.set_controls(lane_controls);
     lane_simulator.toggle_lane_assist();
     for (int i = 211; i <= 450; ++i)
         lane_simulator.sample(i * .025);
-    assert(std::abs(lane_simulator.visual_state().world_position_x_m) <
-           lane_departure);
+    assert(std::abs(lane_simulator.visual_state().world_position_x_m + 2.5) <
+           distance_from_right_lane);
 
     simulator.toggle_tire_fault();
     simulator.toggle_battery_fault();

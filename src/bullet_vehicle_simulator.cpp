@@ -277,8 +277,9 @@ void BulletVehicleSimulator::advance(double dt) {
         const btVector3 current_forward =
             steering_transform.getBasis() * btVector3(0, 0, 1);
         const double road_direction = current_forward.z() >= 0 ? 1.0 : -1.0;
-        const double desired_heading =
-            std::atan2(-position.x(), road_direction * 50.0);
+        const double right_lane_center_x = -road_direction * 2.5;
+        const double desired_heading = std::atan2(
+            right_lane_center_x - position.x(), road_direction * 50.0);
         const double current_heading =
             std::atan2(current_forward.x(), current_forward.z());
         double heading_error = desired_heading - current_heading;

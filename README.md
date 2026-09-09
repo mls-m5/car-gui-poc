@@ -57,8 +57,8 @@ Simulator controls:
 - `L` toggles headlights and `H` toggles high beam.
 - `B`, `T`, and `F` toggle battery, tire-pressure, and drivetrain faults.
 - `X` toggles the seat belt.
-- `K` toggles lane assist. It steers toward a point 50 metres ahead on the
-  road centerline unless the driver is steering manually.
+- `K` toggles lane assist. It steers toward a point 50 metres ahead in the
+  right-hand lane unless the driver is steering manually.
 - `+`/`=` sets or increases cruise speed; `-` sets or decreases it.
 - `C` pauses or resumes cruise control. Braking pauses cruise while preserving
   its displayed target; the accelerator can temporarily demand more power.
