@@ -52,6 +52,26 @@ int main() {
     assert(braked.speed_kph < driven.speed_kph);
     assert(braked.trip_energy_regenerated_kwh > 0);
 
+    BulletVehicleSimulator gentle_braking_simulator;
+    SimulatorControls gentle_controls;
+    gentle_controls.throttle = true;
+    gentle_braking_simulator.set_controls(gentle_controls);
+    gentle_braking_simulator.sample(0);
+    VehicleData speed_before_braking;
+    for (int i = 1; i <= 240; ++i)
+        speed_before_braking = gentle_braking_simulator.sample(i * 0.025);
+    gentle_controls.throttle = false;
+    gentle_controls.brake = true;
+    gentle_braking_simulator.set_controls(gentle_controls);
+    VehicleData first_braking_frame = gentle_braking_simulator.sample(6.025);
+    assert(first_braking_frame.speed_kph >
+           speed_before_braking.speed_kph * .85);
+    VehicleData after_gentle_braking;
+    for (int i = 242; i <= 362; ++i)
+        after_gentle_braking = gentle_braking_simulator.sample(i * 0.025);
+    assert(after_gentle_braking.speed_kph < speed_before_braking.speed_kph);
+    assert(after_gentle_braking.trip_energy_regenerated_kwh > 0);
+
     simulator.toggle_tire_fault();
     simulator.toggle_battery_fault();
     VehicleData faulted = simulator.sample(17.1);

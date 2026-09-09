@@ -19,8 +19,9 @@ constexpr double rolling_coefficient = 0.011;
 constexpr double gravity = 9.81;
 constexpr double drivetrain_efficiency = 0.91;
 constexpr double regeneration_efficiency = 0.68;
-constexpr double normal_brake_force = 5000;
-constexpr double emergency_brake_force = 12000;
+constexpr double normal_wheel_brake_impulse = 40;
+constexpr double emergency_wheel_brake_impulse = 1000;
+constexpr double maximum_regenerative_force_n = 1800;
 constexpr double maximum_regenerative_power_w = 35000;
 } // namespace
 
@@ -202,7 +203,7 @@ void BulletVehicleSimulator::advance(double dt) {
     const double throttle = controls_.throttle ? 1.0 : 0.0;
     const double brake_target =
         controls_.brake || controls_.emergency_brake ? 1.0 : 0.0;
-    const double brake_response = controls_.emergency_brake ? 10.0 : 4.5;
+    const double brake_response = controls_.emergency_brake ? 10.0 : 2.5;
     brake_application_ += (brake_target - brake_application_) *
                           std::min(1.0, dt * brake_response);
     const bool can_drive = gear_ == Gear::drive || gear_ == Gear::reverse;
@@ -211,7 +212,7 @@ void BulletVehicleSimulator::advance(double dt) {
                                    ? maximum_drive_power_w * 0.25
                                    : maximum_drive_power_w;
     const double traction_magnitude =
-        can_drive && throttle > 0
+        can_drive && throttle > 0 && brake_target == 0
             ? std::min(8500.0, power_limit / std::max(3.0, old_speed))
             : 0;
 
@@ -228,20 +229,26 @@ void BulletVehicleSimulator::advance(double dt) {
     physics_->vehicle->applyEngineForce(
         (btScalar)(traction_magnitude * direction * 0.5), 3);
 
-    const double brake_magnitude =
-        brake_application_ * (controls_.emergency_brake ? emergency_brake_force
-                                                        : normal_brake_force);
+    const double wheel_brake_impulse =
+        brake_application_ * (controls_.emergency_brake
+                                  ? emergency_wheel_brake_impulse
+                                  : normal_wheel_brake_impulse);
     for (int wheel = 0; wheel < physics_->vehicle->getNumWheels(); ++wheel)
-        physics_->vehicle->setBrake((btScalar)(brake_magnitude * 0.25), wheel);
+        physics_->vehicle->setBrake((btScalar)(wheel_brake_impulse * 0.25),
+                                    wheel);
 
     const btVector3 horizontal_velocity(old_velocity.x(), 0, old_velocity.z());
     const double speed_abs = horizontal_velocity.length();
+    const double regenerative_force = brake_application_ *
+                                      maximum_regenerative_force_n *
+                                      std::clamp(speed_abs / 2.5, 0.0, 1.0);
     body.clearForces();
     if (speed_abs > 0.02) {
         const double resistance =
             0.5 * air_density * drag_area * speed_abs * speed_abs +
             rolling_coefficient * vehicle_mass_kg * gravity;
-        body.applyCentralForce(-horizontal_velocity.normalized() * resistance);
+        body.applyCentralForce(-horizontal_velocity.normalized() *
+                               (resistance + regenerative_force));
     }
     physics_->world.stepSimulation(dt, 3, 1.0 / 120.0);
 
@@ -276,9 +283,9 @@ void BulletVehicleSimulator::advance(double dt) {
     trip_distance_km_ += travelled_m / 1000;
     const double mechanical_drive_w = traction_magnitude * average_speed;
     const double regenerative_w =
-        brake_magnitude > 0 && average_speed > 1
+        regenerative_force > 0 && average_speed > 1
             ? std::min(maximum_regenerative_power_w,
-                       brake_magnitude * average_speed * 0.45)
+                       regenerative_force * average_speed)
             : 0;
     if (mechanical_drive_w > 0) {
         const double electrical_kwh =
@@ -348,7 +355,7 @@ VehicleData BulletVehicleSimulator::sample(double elapsed_seconds) {
         (data.maximum_cell_voltage_v - data.minimum_cell_voltage_v) * 1000;
     data.twelve_volt_voltage_v = 13.9;
     data.available_discharge_power_kw = visual_.battery_fault ? 35 : 150;
-    data.available_regen_power_kw = 50;
+    data.available_regen_power_kw = maximum_regenerative_power_w / 1000;
     data.motor_temperature_c = motor_temperature_c_;
     data.inverter_temperature_c = inverter_temperature_c_;
     data.tire_pressure_front_left_bar = 2.55;

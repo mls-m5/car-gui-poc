@@ -1,5 +1,6 @@
 #include "dashboard.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 namespace {
 NVGcolor bg = nvgRGB(10, 16, 27), card = nvgRGB(20, 30, 46),
@@ -344,9 +345,9 @@ void draw_modern_driver_display(NVGcontext *v,
     nvgStrokeWidth(v, 1);
     nvgStroke(v);
 
-    char speed[24], range[24], soc[24], trip[48], temperature[32];
+    char speed[24], power[24], soc[24], trip[48], temperature[32];
     std::snprintf(speed, sizeof speed, "%.0f", d.speed_kph);
-    std::snprintf(range, sizeof range, "%.0f", d.estimated_range_km);
+    std::snprintf(power, sizeof power, "%.0f", std::abs(d.power_kw));
     circular_gauge(v,
                    225,
                    225,
@@ -355,13 +356,17 @@ void draw_modern_driver_display(NVGcontext *v,
                    speed,
                    "KM/H",
                    false);
+    const bool regenerating = d.power_kw < -0.05;
+    const float power_limit =
+        (float)(regenerating ? d.available_regen_power_kw
+                             : d.available_discharge_power_kw);
     circular_gauge(v,
                    575,
                    225,
-                   (float)d.estimated_range_km / 500.f,
-                   nvgRGB(56, 239, 125),
-                   range,
-                   "KM REMAINING",
+                   (float)std::abs(d.power_kw) / std::max(1.f, power_limit),
+                   regenerating ? nvgRGB(56, 239, 125) : nvgRGB(0, 242, 254),
+                   power,
+                   regenerating ? "KW CHARGE" : "KW OUTPUT",
                    true);
     txt(v, gear_name(d.gear), 400, 225, 26, cyan, NVG_ALIGN_CENTER);
 
