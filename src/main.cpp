@@ -92,10 +92,12 @@ static void destroy(Display &display) {
 
 enum class DisplayContent { driver, details, simulator_2d, simulator_3d };
 
-static void render(Display &display,
-                   const VehicleData &data,
-                   DisplayContent content,
-                   const SimulatorVisualState *visual = nullptr) {
+static void render(
+    Display &display,
+    const VehicleData &data,
+    DisplayContent content,
+    const SimulatorVisualState *visual = nullptr,
+    DriverDashboardStyle dashboard_style = DriverDashboardStyle::modern_rings) {
     if (!display.open ||
         SDL_GL_MakeCurrent(display.window, display.context) != 0)
         return;
@@ -114,7 +116,7 @@ static void render(Display &display,
         display.vg, (float)width, (float)height, (float)pixel_width / width);
     const Rect bounds{0, 0, (float)width, (float)height};
     if (content == DisplayContent::driver)
-        draw_driver_display(display.vg, bounds, data);
+        draw_driver_display(display.vg, bounds, data, dashboard_style);
     else if (content == DisplayContent::details)
         draw_vehicle_details(display.vg, bounds, data);
     else if (content == DisplayContent::simulator_2d && visual)
@@ -183,6 +185,7 @@ struct WebApplication {
     WebView view = WebView::simulator_3d;
     BulletVehicleSimulator simulator_3d;
     InteractiveVehicleSimulator *active_source = &simulator_3d;
+    DriverDashboardStyle dashboard_style = DriverDashboardStyle::modern_rings;
 };
 static WebApplication web_application;
 static void resize_web_canvas() {
@@ -258,6 +261,11 @@ static void web_frame(void *arg) {
             app.display.open = false;
         if (event.type == SDL_KEYDOWN) {
             handle_simulator_toggle(*app.active_source, event.key);
+            if (event.key.keysym.sym == SDLK_v && !event.key.repeat)
+                app.dashboard_style =
+                    app.dashboard_style == DriverDashboardStyle::modern_rings
+                        ? DriverDashboardStyle::legacy
+                        : DriverDashboardStyle::modern_rings;
             if (event.key.keysym.sym == SDLK_1)
                 app.view = WebView::simulator_3d;
             if (event.key.keysym.sym == SDLK_2)
@@ -322,18 +330,23 @@ static void web_frame(void *arg) {
         draw_simulator_hud(
             app.display.vg, content, app.simulator_3d.visual_state());
     else if (app.view == WebView::driver)
-        draw_driver_display(app.display.vg, content, data);
+        draw_driver_display(app.display.vg, content, data, app.dashboard_style);
     else if (app.view == WebView::details)
         draw_vehicle_details(app.display.vg, content, data);
     else {
         constexpr float gap = 12;
         const float panels_y = scene.y + scene.height + gap;
         const float panels_height = content.y + content.height - panels_y;
-        const float driver_width =
-            (content.width - gap) * 1100.f / (1100.f + 850.f);
+        const float dashboard_virtual_width =
+            app.dashboard_style == DriverDashboardStyle::modern_rings ? 800.f
+                                                                      : 1100.f;
+        const float driver_width = (content.width - gap) *
+                                   dashboard_virtual_width /
+                                   (dashboard_virtual_width + 850.f);
         draw_driver_display(app.display.vg,
                             {content.x, panels_y, driver_width, panels_height},
-                            data);
+                            data,
+                            app.dashboard_style);
         draw_vehicle_details(app.display.vg,
                              {content.x + driver_width + gap,
                               panels_y,
@@ -385,10 +398,15 @@ int main(int argc, char **argv) {
         SDL_free((void *)base_path);
     bool interactive = false;
     bool use_2d_view = false;
+    DriverDashboardStyle dashboard_style = DriverDashboardStyle::modern_rings;
     for (int i = 1; i < argc; ++i) {
         interactive =
             interactive || std::string(argv[i]) == "--backend=simulator";
         use_2d_view = use_2d_view || std::string(argv[i]) == "--view=2d";
+        if (std::string(argv[i]) == "--dashboard=legacy")
+            dashboard_style = DriverDashboardStyle::legacy;
+        if (std::string(argv[i]) == "--dashboard=modern")
+            dashboard_style = DriverDashboardStyle::modern_rings;
     }
     Display driver, details, simulator_display;
     bool displays_created =
@@ -441,6 +459,11 @@ int main(int argc, char **argv) {
             if (event.type == SDL_KEYDOWN) {
                 if (event.key.keysym.sym == SDLK_ESCAPE)
                     running = false;
+                if (event.key.keysym.sym == SDLK_v && !event.key.repeat)
+                    dashboard_style =
+                        dashboard_style == DriverDashboardStyle::modern_rings
+                            ? DriverDashboardStyle::legacy
+                            : DriverDashboardStyle::modern_rings;
                 if (interactive)
                     handle_simulator_toggle(*interactive_source, event.key);
             }
@@ -465,7 +488,8 @@ int main(int argc, char **argv) {
                           .count();
         VehicleData data = source->sample(time);
         if (driver.open)
-            render(driver, data, DisplayContent::driver);
+            render(
+                driver, data, DisplayContent::driver, nullptr, dashboard_style);
         if (details.open)
             render(details, data, DisplayContent::details);
         if (simulator_display.open)

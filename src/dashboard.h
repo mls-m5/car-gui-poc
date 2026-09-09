@@ -7,5 +7,10 @@ struct Rect {
     float width;
     float height;
 };
-void draw_driver_display(NVGcontext *, const Rect &, const VehicleData &);
+enum class DriverDashboardStyle { modern_rings, legacy };
+void draw_driver_display(
+    NVGcontext *,
+    const Rect &,
+    const VehicleData &,
+    DriverDashboardStyle = DriverDashboardStyle::modern_rings);
 void draw_vehicle_details(NVGcontext *, const Rect &, const VehicleData &);

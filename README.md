@@ -40,7 +40,12 @@ lightweight vehicle model and remains available:
 ```sh
 ./build/car-gui --backend=simulator
 ./build/car-gui --backend=simulator --view=2d
+./build/car-gui --dashboard=legacy
 ```
+
+The modern twin-ring driver dashboard is selected by default. Pass
+`--dashboard=legacy` to retain the original card-based appearance, or press
+`V` at runtime to switch between them.
 
 The 3D simulator uses Bullet's raycast vehicle with four suspension wheels and
 steerable front wheels. Its camera follows the vehicle through fixed world
@@ -79,8 +84,9 @@ provides `3D DRIVE`, `DRIVER`, `DETAILS`, and `ALL` views in an in-canvas
 navigation bar. The Bullet-powered 3D road is selected by default. `ALL`
 places the 3D road above both live dashboard panels. The lightweight 2D road
 is native-only (`--view=2d`). Use the buttons, keys `1` through `4`, or `Tab`
-to switch browser views. The same driving and fault controls listed above
-work while the canvas has focus.
+to switch browser views. Press `V` to switch between the modern ring dashboard
+and the preserved legacy dashboard. The same driving and fault controls listed
+above work while the canvas has focus.
 
 Install and activate the official Emscripten SDK separately:
 

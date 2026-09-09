@@ -219,10 +219,175 @@ void warning_symbol(NVGcontext *v,
     }
     nvgRestore(v);
 }
+void compact_headlight(
+    NVGcontext *v, float x, float y, bool active, bool high_beam) {
+    const NVGcolor color = active ? (high_beam ? nvgRGB(59, 130, 246) : green)
+                                  : nvgRGB(42, 50, 61);
+    nvgSave(v);
+    nvgStrokeColor(v, color);
+    nvgStrokeWidth(v, active ? 2.6f : 2.f);
+    nvgLineCap(v, NVG_ROUND);
+    nvgBeginPath(v);
+    nvgMoveTo(v, x - 12, y - 10);
+    nvgBezierTo(v, x - 2, y - 7, x - 2, y + 7, x - 12, y + 10);
+    nvgClosePath(v);
+    nvgStroke(v);
+    for (int i = -1; i <= 1; ++i) {
+        nvgBeginPath(v);
+        nvgMoveTo(v, x + 1, y + i * 7);
+        nvgLineTo(v, x + 14, y + i * 7 + (high_beam ? 0 : 3));
+        nvgStroke(v);
+    }
+    nvgRestore(v);
+}
+void compact_warning(NVGcontext *v, float x, float y, bool active, bool tire) {
+    const NVGcolor color = active ? (tire ? amber : red) : nvgRGB(42, 50, 61);
+    nvgSave(v);
+    nvgStrokeColor(v, color);
+    nvgFillColor(v, color);
+    nvgStrokeWidth(v, 2.3f);
+    nvgLineCap(v, NVG_ROUND);
+    nvgLineJoin(v, NVG_ROUND);
+    nvgBeginPath(v);
+    if (tire) {
+        nvgMoveTo(v, x - 12, y - 10);
+        nvgBezierTo(v, x - 17, y, x - 11, y + 12, x - 5, y + 12);
+        nvgLineTo(v, x + 5, y + 12);
+        nvgBezierTo(v, x + 11, y + 12, x + 17, y, x + 12, y - 10);
+    }
+    else {
+        nvgMoveTo(v, x, y - 13);
+        nvgLineTo(v, x - 14, y + 12);
+        nvgLineTo(v, x + 14, y + 12);
+        nvgClosePath(v);
+    }
+    nvgStroke(v);
+    txt(v, "!", x, y + 3, 15, color, NVG_ALIGN_CENTER);
+    nvgRestore(v);
+}
+void circular_gauge(NVGcontext *v,
+                    float x,
+                    float y,
+                    float percentage,
+                    NVGcolor color,
+                    const char *value,
+                    const char *unit) {
+    constexpr float pi = 3.14159265f;
+    percentage = std::clamp(percentage, 0.f, 1.f);
+    nvgSave(v);
+    nvgLineCap(v, NVG_ROUND);
+    nvgBeginPath(v);
+    nvgCircle(v, x, y, 90);
+    nvgStrokeWidth(v, 8);
+    nvgStrokeColor(v, nvgRGBA(255, 255, 255, 20));
+    nvgStroke(v);
+    if (percentage > 0.001f) {
+        nvgBeginPath(v);
+        nvgArc(v, x, y, 90, -pi / 2, -pi / 2 + percentage * 2 * pi, NVG_CW);
+        nvgStrokeWidth(v, 16);
+        nvgStrokeColor(
+            v, nvgRGBA(color.r * 255, color.g * 255, color.b * 255, 32));
+        nvgStroke(v);
+        nvgBeginPath(v);
+        nvgArc(v, x, y, 90, -pi / 2, -pi / 2 + percentage * 2 * pi, NVG_CW);
+        nvgStrokeWidth(v, 8);
+        nvgStrokeColor(v, color);
+        nvgStroke(v);
+    }
+    txt(v, value, x, y - 10, 52, white, NVG_ALIGN_CENTER);
+    nvgTextLetterSpacing(v, 1.5f);
+    txt(v, unit, x, y + 40, 12, muted, NVG_ALIGN_CENTER);
+    nvgTextLetterSpacing(v, 0);
+    nvgRestore(v);
+}
+void draw_modern_driver_display(NVGcontext *v,
+                                const Rect &bounds,
+                                const VehicleData &d) {
+    const float sx = std::min(bounds.width / 800.f, bounds.height / 480.f);
+    const float ox = bounds.x + (bounds.width - 800 * sx) / 2;
+    const float oy = bounds.y + (bounds.height - 480 * sx) / 2;
+    nvgSave(v);
+    nvgScissor(v, bounds.x, bounds.y, bounds.width, bounds.height);
+    nvgTranslate(v, ox, oy);
+    nvgScale(v, sx, sx);
+    nvgBeginPath(v);
+    nvgRect(v, 0, 0, 800, 480);
+    nvgFillColor(v, nvgRGB(10, 12, 16));
+    nvgFill(v);
+    nvgBeginPath(v);
+    nvgRoundedRect(v, 18, 16, 764, 448, 24);
+    nvgFillColor(v, nvgRGBA(255, 255, 255, 8));
+    nvgFill(v);
+    nvgStrokeColor(v, nvgRGBA(255, 255, 255, 14));
+    nvgStrokeWidth(v, 1);
+    nvgStroke(v);
+
+    turn_signal(v, 260, 58, true, d.warnings.left_indicator);
+    compact_headlight(
+        v, 316, 58, d.warnings.headlights && !d.warnings.high_beam, false);
+    compact_headlight(v, 372, 58, d.warnings.high_beam, true);
+    compact_warning(v, 428, 58, d.warnings.tire_pressure, true);
+    compact_warning(v,
+                    484,
+                    58,
+                    d.warnings.general_warning || d.warnings.battery_warning,
+                    false);
+    turn_signal(v, 540, 58, false, d.warnings.right_indicator);
+    nvgBeginPath(v);
+    nvgMoveTo(v, 55, 92);
+    nvgLineTo(v, 745, 92);
+    nvgStrokeColor(v, nvgRGBA(255, 255, 255, 13));
+    nvgStrokeWidth(v, 1);
+    nvgStroke(v);
+
+    char speed[24], range[24], soc[24], trip[48], temperature[32];
+    std::snprintf(speed, sizeof speed, "%.0f", d.speed_kph);
+    std::snprintf(range, sizeof range, "%.0f", d.estimated_range_km);
+    circular_gauge(v,
+                   225,
+                   225,
+                   (float)d.speed_kph / 220.f,
+                   nvgRGB(0, 242, 254),
+                   speed,
+                   "KM/H");
+    circular_gauge(v,
+                   575,
+                   225,
+                   (float)d.estimated_range_km / 500.f,
+                   nvgRGB(56, 239, 125),
+                   range,
+                   "KM REMAINING");
+    txt(v, gear_name(d.gear), 400, 225, 26, cyan, NVG_ALIGN_CENTER);
+
+    nvgTextLetterSpacing(v, 1.f);
+    txt(v, "BATTERY", 200, 369, 13, muted);
+    nvgTextLetterSpacing(v, 0);
+    std::snprintf(soc, sizeof soc, "%.0f%%", d.battery_soc_percent);
+    txt(v, soc, 600, 369, 14, white, NVG_ALIGN_RIGHT);
+    const NVGcolor battery_color = d.battery_soc_percent <= 15   ? red
+                                   : d.battery_soc_percent <= 30 ? amber
+                                                                 : green;
+    box(v, 200, 394, 400, 8, nvgRGBA(255, 255, 255, 20));
+    const float battery_width =
+        400 * std::clamp((float)d.battery_soc_percent / 100.f, 0.f, 1.f);
+    if (battery_width > 0) {
+        box(v, 200, 394, battery_width, 8, battery_color);
+    }
+    std::snprintf(trip, sizeof trip, "TRIP  %.1f KM", d.trip_distance_km);
+    std::snprintf(
+        temperature, sizeof temperature, "%.0f °C", d.outside_temperature_c);
+    txt(v, trip, 200, 430, 12, muted);
+    txt(v, temperature, 600, 430, 12, muted, NVG_ALIGN_RIGHT);
+    if (d.warnings.seat_belt)
+        txt(v, "SEAT BELT", 55, 430, 11, red);
+    if (d.warnings.parking_brake)
+        txt(v, "PARK", 745, 430, 11, red, NVG_ALIGN_RIGHT);
+    nvgRestore(v);
+}
 } // namespace
-void draw_driver_display(NVGcontext *v,
-                         const Rect &bounds,
-                         const VehicleData &d) {
+void draw_legacy_driver_display(NVGcontext *v,
+                                const Rect &bounds,
+                                const VehicleData &d) {
     float sx = std::min(bounds.width / 1100.f, bounds.height / 600.f),
           ox = bounds.x + (bounds.width - 1100 * sx) / 2,
           oy = bounds.y + (bounds.height - 600 * sx) / 2;
@@ -321,6 +486,15 @@ void draw_driver_display(NVGcontext *v,
         warning_symbol(
             v, icons[i], 330 + i * 102, 545, active[i], i == 3 ? red : amber);
     nvgRestore(v);
+}
+void draw_driver_display(NVGcontext *v,
+                         const Rect &bounds,
+                         const VehicleData &d,
+                         DriverDashboardStyle style) {
+    if (style == DriverDashboardStyle::legacy)
+        draw_legacy_driver_display(v, bounds, d);
+    else
+        draw_modern_driver_display(v, bounds, d);
 }
 void draw_vehicle_details(NVGcontext *v,
                           const Rect &bounds,
