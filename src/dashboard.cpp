@@ -271,7 +271,8 @@ void circular_gauge(NVGcontext *v,
                     float percentage,
                     NVGcolor color,
                     const char *value,
-                    const char *unit) {
+                    const char *unit,
+                    bool clockwise) {
     constexpr float pi = 3.14159265f;
     percentage = std::clamp(percentage, 0.f, 1.f);
     nvgSave(v);
@@ -282,14 +283,17 @@ void circular_gauge(NVGcontext *v,
     nvgStrokeColor(v, nvgRGBA(255, 255, 255, 20));
     nvgStroke(v);
     if (percentage > 0.001f) {
+        const float arc_end =
+            -pi / 2 + (clockwise ? 1.f : -1.f) * percentage * 2 * pi;
+        const int direction = clockwise ? NVG_CW : NVG_CCW;
         nvgBeginPath(v);
-        nvgArc(v, x, y, 90, -pi / 2, -pi / 2 + percentage * 2 * pi, NVG_CW);
+        nvgArc(v, x, y, 90, -pi / 2, arc_end, direction);
         nvgStrokeWidth(v, 16);
         nvgStrokeColor(
             v, nvgRGBA(color.r * 255, color.g * 255, color.b * 255, 32));
         nvgStroke(v);
         nvgBeginPath(v);
-        nvgArc(v, x, y, 90, -pi / 2, -pi / 2 + percentage * 2 * pi, NVG_CW);
+        nvgArc(v, x, y, 90, -pi / 2, arc_end, direction);
         nvgStrokeWidth(v, 8);
         nvgStrokeColor(v, color);
         nvgStroke(v);
@@ -322,7 +326,7 @@ void draw_modern_driver_display(NVGcontext *v,
     nvgStrokeWidth(v, 1);
     nvgStroke(v);
 
-    turn_signal(v, 260, 58, true, d.warnings.left_indicator);
+    turn_signal(v, 260, 58, false, d.warnings.left_indicator);
     compact_headlight(
         v, 316, 58, d.warnings.headlights && !d.warnings.high_beam, false);
     compact_headlight(v, 372, 58, d.warnings.high_beam, true);
@@ -332,7 +336,7 @@ void draw_modern_driver_display(NVGcontext *v,
                     58,
                     d.warnings.general_warning || d.warnings.battery_warning,
                     false);
-    turn_signal(v, 540, 58, false, d.warnings.right_indicator);
+    turn_signal(v, 540, 58, true, d.warnings.right_indicator);
     nvgBeginPath(v);
     nvgMoveTo(v, 55, 92);
     nvgLineTo(v, 745, 92);
@@ -349,14 +353,16 @@ void draw_modern_driver_display(NVGcontext *v,
                    (float)d.speed_kph / 220.f,
                    nvgRGB(0, 242, 254),
                    speed,
-                   "KM/H");
+                   "KM/H",
+                   false);
     circular_gauge(v,
                    575,
                    225,
                    (float)d.estimated_range_km / 500.f,
                    nvgRGB(56, 239, 125),
                    range,
-                   "KM REMAINING");
+                   "KM REMAINING",
+                   true);
     txt(v, gear_name(d.gear), 400, 225, 26, cyan, NVG_ALIGN_CENTER);
 
     nvgTextLetterSpacing(v, 1.f);
