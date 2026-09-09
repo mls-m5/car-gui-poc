@@ -435,9 +435,9 @@ void draw_modern_driver_display(NVGcontext *v,
     nvgStrokeWidth(v, 1);
     nvgStroke(v);
 
-    char speed[24], power[24], soc[24], trip[48], temperature[32];
+    char speed[24], range[24], soc[24], trip[48], temperature[32];
     std::snprintf(speed, sizeof speed, "%.0f", d.speed_kph);
-    std::snprintf(power, sizeof power, "%.0f", std::abs(displayed_power_kw));
+    std::snprintf(range, sizeof range, "%.0f", d.estimated_range_km);
     circular_gauge(v,
                    225,
                    225,
@@ -456,8 +456,8 @@ void draw_modern_driver_display(NVGcontext *v,
                    (float)std::abs(displayed_power_kw) /
                        (std::max(1.f, power_limit) * 4.f),
                    regenerating ? nvgRGB(56, 239, 125) : nvgRGB(0, 242, 254),
-                   power,
-                   regenerating ? "KW CHARGE" : "KW OUTPUT",
+                   range,
+                   "KM REMAINING",
                    !regenerating);
     txt(v, gear_name(d.gear), 400, 225, 26, cyan, NVG_ALIGN_CENTER);
 
