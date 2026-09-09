@@ -19,9 +19,9 @@ constexpr double rolling_coefficient = 0.011;
 constexpr double gravity = 9.81;
 constexpr double drivetrain_efficiency = 0.91;
 constexpr double regeneration_efficiency = 0.68;
-constexpr double normal_wheel_brake_impulse = 40;
+constexpr double normal_wheel_brake_impulse = 160;
 constexpr double emergency_wheel_brake_impulse = 1000;
-constexpr double maximum_regenerative_force_n = 1800;
+constexpr double maximum_regenerative_force_n = 7200;
 constexpr double maximum_regenerative_power_w = 35000;
 } // namespace
 
