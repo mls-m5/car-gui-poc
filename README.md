@@ -4,9 +4,8 @@ A proof-of-concept electric-car GUI rendered with SDL2 and NanoVG. It opens
 an EV driver display and a second vehicle-details display. SDL2 provides the
 windows, OpenGL ES contexts, and event loop; NanoVG provides vector rendering.
 
-The project uses NanoVG's OpenGL ES 2 backend. GLES2 is the portable baseline
-for a future Emscripten/WebAssembly build because it maps to WebGL 1. A native
-WebAssembly build is not included yet.
+The project uses NanoVG's OpenGL ES 2 backend. GLES2 maps to WebGL 1 and is the
+compatibility baseline for the included Emscripten/WebAssembly build.
 
 ## Requirements
 
@@ -150,3 +149,22 @@ The image is named `car-gui-web` by default. Use `CAR_GUI_WEB_IMAGE`,
 CAR_GUI_WEB_PORT=9000 CONTAINER_ENGINE=docker \
     ./scripts/build-web-container.sh --serve
 ```
+
+### GitHub Pages deployment
+
+The workflow in `.github/workflows/pages.yml` builds the Emscripten application
+inside the pinned container image and deploys its static files to GitHub Pages.
+It runs for every push to `main` and can also be started manually from the
+Actions tab.
+
+To enable it for a GitHub repository:
+
+1. Push the repository, including the Bullet submodule reference, to GitHub.
+2. Open **Settings → Pages**.
+3. Set **Source** to **GitHub Actions**.
+4. Push to `main` or run **Deploy Emscripten demo to GitHub Pages** manually.
+
+The deployed URL is normally
+`https://<account>.github.io/<repository>/`. The generated loader uses relative
+artifact URLs, so it works from a repository subdirectory without a custom
+base path.
